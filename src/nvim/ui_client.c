@@ -1,28 +1,33 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// Nvim's own UI client, which attaches to a child or remote Nvim server.
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "nvim/api/keysets_defs.h"
+#include "nvim/api/private/defs.h"
+#include "nvim/api/private/dispatch.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/channel.h"
+#include "nvim/channel_defs.h"
 #include "nvim/eval.h"
 #include "nvim/eval/typval_defs.h"
-#include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
 #include "nvim/globals.h"
 #include "nvim/highlight.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/log.h"
 #include "nvim/main.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/msgpack_rpc/channel.h"
 #include "nvim/msgpack_rpc/channel_defs.h"
 #include "nvim/os/os_defs.h"
 #include "nvim/tui/tui.h"
+#include "nvim/tui/tui_defs.h"
 #include "nvim/ui.h"
 #include "nvim/ui_client.h"
+#include "nvim/ui_defs.h"
 
 #ifdef MSWIN
 # include "nvim/os/os_win_console.h"
@@ -72,23 +77,20 @@ uint64_t ui_client_start_server(int argc, char **argv)
   return channel->id;
 }
 
-void ui_client_attach(int width, int height, char *term)
+void ui_client_attach(int width, int height, char *term, bool rgb)
 {
   MAXSIZE_TEMP_ARRAY(args, 3);
   ADD_C(args, INTEGER_OBJ(width));
   ADD_C(args, INTEGER_OBJ(height));
 
   MAXSIZE_TEMP_DICT(opts, 9);
-  PUT_C(opts, "rgb", BOOLEAN_OBJ(true));
+  PUT_C(opts, "rgb", BOOLEAN_OBJ(rgb));
   PUT_C(opts, "ext_linegrid", BOOLEAN_OBJ(true));
   PUT_C(opts, "ext_termcolors", BOOLEAN_OBJ(true));
   if (term) {
     PUT_C(opts, "term_name", CSTR_AS_OBJ(term));
   }
-  if (ui_client_bg_response != kNone) {
-    bool is_dark = (ui_client_bg_response == kTrue);
-    PUT_C(opts, "term_background", CSTR_AS_OBJ(is_dark ? "dark" : "light"));
-  }
+
   PUT_C(opts, "term_colors", INTEGER_OBJ(t_colors));
   if (!ui_client_is_remote) {
     PUT_C(opts, "stdin_tty", BOOLEAN_OBJ(stdin_isatty));
@@ -116,9 +118,10 @@ void ui_client_run(bool remote_ui)
   ui_client_is_remote = remote_ui;
   int width, height;
   char *term;
-  tui_start(&tui, &width, &height, &term);
+  bool rgb;
+  tui_start(&tui, &width, &height, &term, &rgb);
 
-  ui_client_attach(width, height, term);
+  ui_client_attach(width, height, term, rgb);
 
   // os_exit() will be invoked when the client channel detaches
   while (true) {
@@ -207,7 +210,9 @@ void ui_client_event_grid_line(Array args)
 
 void ui_client_event_raw_line(GridLineEvent *g)
 {
-  int grid = g->args[0], row = g->args[1], startcol = g->args[2];
+  int grid = g->args[0];
+  int row = g->args[1];
+  int startcol = g->args[2];
   Integer endcol = startcol + g->coloff;
   Integer clearcol = endcol + g->clear_width;
   LineFlags lineflags = g->wrap ? kLineFlagWrap : 0;
@@ -215,3 +220,12 @@ void ui_client_event_raw_line(GridLineEvent *g)
   tui_raw_line(tui, grid, row, startcol, endcol, clearcol, g->cur_attr, lineflags,
                (const schar_T *)grid_line_buf_char, grid_line_buf_attr);
 }
+
+#ifdef EXITFREE
+void ui_client_free_all_mem(void)
+{
+  tui_free_all_mem(tui);
+  xfree(grid_line_buf_char);
+  xfree(grid_line_buf_attr);
+}
+#endif

@@ -1,30 +1,34 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "nvim/api/keysets_defs.h"
 #include "nvim/api/private/defs.h"
+#include "nvim/api/private/dispatch.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/api/private/validate.h"
 #include "nvim/api/window.h"
-#include "nvim/ascii.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/cursor.h"
 #include "nvim/drawscreen.h"
 #include "nvim/eval/window.h"
 #include "nvim/ex_docmd.h"
-#include "nvim/gettext.h"
+#include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
 #include "nvim/lua/executor.h"
-#include "nvim/memline_defs.h"
+#include "nvim/memory_defs.h"
+#include "nvim/message.h"
 #include "nvim/move.h"
 #include "nvim/plines.h"
-#include "nvim/pos.h"
-#include "nvim/types.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 #include "nvim/window.h"
+
+#ifdef INCLUDE_GENERATED_DECLARATIONS
+# include "api/window.c.generated.h"
+#endif
 
 /// Gets the current buffer in a window
 ///
@@ -50,9 +54,18 @@ Buffer nvim_win_get_buf(Window window, Error *err)
 /// @param[out] err Error details, if any
 void nvim_win_set_buf(Window window, Buffer buffer, Error *err)
   FUNC_API_SINCE(5)
-  FUNC_API_TEXTLOCK
+  FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
-  win_set_buf(window, buffer, false, err);
+  win_T *win = find_window_by_handle(window, err);
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+  if (!win || !buf) {
+    return;
+  }
+  if (cmdwin_type != 0 && (win == curwin || win == cmdwin_old_curwin || buf == curbuf)) {
+    api_set_error(err, kErrorTypeException, "%s", e_cmdwin);
+    return;
+  }
+  win_set_buf(win, buf, false, err);
 }
 
 /// Gets the (1,0)-indexed, buffer-relative cursor position for a given window
@@ -353,10 +366,10 @@ Boolean nvim_win_is_valid(Window window)
 /// @param[out] err Error details, if any
 void nvim_win_hide(Window window, Error *err)
   FUNC_API_SINCE(7)
-  FUNC_API_TEXTLOCK
+  FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
   win_T *win = find_window_by_handle(window, err);
-  if (!win) {
+  if (!win || !can_close_in_cmdwin(win, err)) {
     return;
   }
 
@@ -388,16 +401,7 @@ void nvim_win_close(Window window, Boolean force, Error *err)
   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
   win_T *win = find_window_by_handle(window, err);
-  if (!win) {
-    return;
-  }
-
-  if (cmdwin_type != 0) {
-    if (win == curwin) {
-      cmdwin_result = Ctrl_C;
-    } else {
-      api_set_error(err, kErrorTypeException, "%s", _(e_cmdwin));
-    }
+  if (!win || !can_close_in_cmdwin(win, err)) {
     return;
   }
 
@@ -431,10 +435,12 @@ Object nvim_win_call(Window window, LuaRef fun, Error *err)
 
   try_start();
   Object res = OBJECT_INIT;
-  WIN_EXECUTE(win, tabpage, {
+  win_execute_T win_execute_args;
+  if (win_execute_before(&win_execute_args, win, tabpage)) {
     Array args = ARRAY_DICT_INIT;
     res = nlua_call_ref(fun, NULL, args, true, err);
-  });
+  }
+  win_execute_after(&win_execute_args);
   try_end(err);
   return res;
 }
@@ -513,18 +519,12 @@ Dictionary nvim_win_text_height(Window window, Dict(win_text_height) *opts, Aren
 
   bool oob = false;
 
-  if (HAS_KEY(opts->start_row)) {
-    VALIDATE_T("start_row", kObjectTypeInteger, opts->start_row.type, {
-      return rv;
-    });
-    start_lnum = (linenr_T)normalize_index(buf, opts->start_row.data.integer, false, &oob);
+  if (HAS_KEY(opts, win_text_height, start_row)) {
+    start_lnum = (linenr_T)normalize_index(buf, opts->start_row, false, &oob);
   }
 
-  if (HAS_KEY(opts->end_row)) {
-    VALIDATE_T("end_row", kObjectTypeInteger, opts->end_row.type, {
-      return rv;
-    });
-    end_lnum = (linenr_T)normalize_index(buf, opts->end_row.data.integer, false, &oob);
+  if (HAS_KEY(opts, win_text_height, end_row)) {
+    end_lnum = (linenr_T)normalize_index(buf, opts->end_row, false, &oob);
   }
 
   VALIDATE(!oob, "%s", "Line index out of bounds", {
@@ -534,27 +534,23 @@ Dictionary nvim_win_text_height(Window window, Dict(win_text_height) *opts, Aren
     return rv;
   });
 
-  if (HAS_KEY(opts->start_vcol)) {
-    VALIDATE(HAS_KEY(opts->start_row), "%s", "'start_vcol' specified without 'start_row'", {
+  if (HAS_KEY(opts, win_text_height, start_vcol)) {
+    VALIDATE(HAS_KEY(opts, win_text_height, start_row),
+             "%s", "'start_vcol' specified without 'start_row'", {
       return rv;
     });
-    VALIDATE_T("start_vcol", kObjectTypeInteger, opts->start_vcol.type, {
-      return rv;
-    });
-    start_vcol = opts->start_vcol.data.integer;
+    start_vcol = opts->start_vcol;
     VALIDATE_RANGE((start_vcol >= 0 && start_vcol <= MAXCOL), "start_vcol", {
       return rv;
     });
   }
 
-  if (HAS_KEY(opts->end_vcol)) {
-    VALIDATE(HAS_KEY(opts->end_row), "%s", "'end_vcol' specified without 'end_row'", {
+  if (HAS_KEY(opts, win_text_height, end_vcol)) {
+    VALIDATE(HAS_KEY(opts, win_text_height, end_row),
+             "%s", "'end_vcol' specified without 'end_row'", {
       return rv;
     });
-    VALIDATE_T("end_vcol", kObjectTypeInteger, opts->end_vcol.type, {
-      return rv;
-    });
-    end_vcol = opts->end_vcol.data.integer;
+    end_vcol = opts->end_vcol;
     VALIDATE_RANGE((end_vcol >= 0 && end_vcol <= MAXCOL), "end_vcol", {
       return rv;
     });
@@ -568,7 +564,7 @@ Dictionary nvim_win_text_height(Window window, Dict(win_text_height) *opts, Aren
 
   int64_t fill = 0;
   int64_t all = win_text_height(win, start_lnum, start_vcol, end_lnum, end_vcol, &fill);
-  if (!HAS_KEY(opts->end_row)) {
+  if (!HAS_KEY(opts, win_text_height, end_row)) {
     const int64_t end_fill = win_get_fill(win, line_count + 1);
     fill += end_fill;
     all += end_fill;

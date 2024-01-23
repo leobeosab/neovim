@@ -1,13 +1,10 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
-#include <inttypes.h>
 #include <limits.h>
 #include <msgpack/unpack.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,22 +13,27 @@
 #include "nvim/api/private/converter.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
-#include "nvim/ascii.h"
+#include "nvim/api/private/validate.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/eval/typval.h"
-#include "nvim/eval/typval_defs.h"
+#include "nvim/eval/vars.h"
 #include "nvim/ex_eval.h"
-#include "nvim/garray.h"
+#include "nvim/garray_defs.h"
+#include "nvim/globals.h"
 #include "nvim/highlight_group.h"
 #include "nvim/lua/executor.h"
-#include "nvim/map.h"
+#include "nvim/map_defs.h"
 #include "nvim/mark.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/message.h"
 #include "nvim/msgpack_rpc/helpers.h"
-#include "nvim/pos.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 #include "nvim/ui.h"
+#include "nvim/ui_defs.h"
 #include "nvim/version.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -138,7 +140,7 @@ bool try_end(Error *err)
     api_set_error(err, kErrorTypeException, "Keyboard interrupt");
     got_int = false;
   } else if (msg_list != NULL && *msg_list != NULL) {
-    int should_free;
+    bool should_free;
     char *msg = get_exception_string(*msg_list,
                                      ET_ERROR,
                                      NULL,
@@ -234,8 +236,7 @@ Object dict_set_var(dict_T *dict, String key, Object value, bool del, bool retva
     // Delete the key
     if (di == NULL) {
       // Doesn't exist, fail
-      api_set_error(err, kErrorTypeValidation, "Key not found: %s",
-                    key.data);
+      api_set_error(err, kErrorTypeValidation, "Key not found: %s", key.data);
     } else {
       // Notify watchers
       if (watched) {
@@ -253,9 +254,7 @@ Object dict_set_var(dict_T *dict, String key, Object value, bool del, bool retva
     typval_T tv;
 
     // Convert the object to a vimscript type in the temporary variable
-    if (!object_to_vim(value, &tv, err)) {
-      return rv;
-    }
+    object_to_vim(value, &tv, err);
 
     typval_T oldtv = TV_INITIAL_VALUE;
 
@@ -264,12 +263,22 @@ Object dict_set_var(dict_T *dict, String key, Object value, bool del, bool retva
       di = tv_dict_item_alloc_len(key.data, key.size);
       tv_dict_add(dict, di);
     } else {
-      if (watched) {
-        tv_copy(&di->di_tv, &oldtv);
-      }
       // Return the old value
       if (retval) {
         rv = vim_to_object(&di->di_tv);
+      }
+      bool type_error = false;
+      if (dict == &vimvardict
+          && !before_set_vvar(key.data, di, &tv, true, watched, &type_error)) {
+        tv_clear(&tv);
+        if (type_error) {
+          api_set_error(err, kErrorTypeValidation,
+                        "Setting v:%s to value with wrong type", key.data);
+        }
+        return rv;
+      }
+      if (watched) {
+        tv_copy(&di->di_tv, &oldtv);
       }
       tv_clear(&di->di_tv);
     }
@@ -516,7 +525,7 @@ String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col
     return rv;
   }
 
-  char *bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
+  char *bufstr = ml_get_buf(buf, (linenr_T)lnum);
   size_t line_length = strlen(bufstr);
 
   start_col = start_col < 0 ? (int64_t)line_length + start_col + 1 : start_col;
@@ -598,9 +607,6 @@ void api_free_object(Object value)
   case kObjectTypeLuaRef:
     api_free_luaref(value.data.luaref);
     break;
-
-  default:
-    abort();
   }
 }
 
@@ -788,10 +794,8 @@ Object copy_object(Object obj, Arena *arena)
 
   case kObjectTypeLuaRef:
     return LUAREF_OBJ(api_new_luaref(obj.data.luaref));
-
-  default:
-    abort();
   }
+  UNREACHABLE;
 }
 
 void api_set_error(Error *err, ErrorType errType, const char *format, ...)
@@ -872,9 +876,8 @@ char *api_typename(ObjectType t)
     return "Window";
   case kObjectTypeTabpage:
     return "Tabpage";
-  default:
-    abort();
   }
+  UNREACHABLE;
 }
 
 HlMessage parse_hl_msg(Array chunks, Error *err)
@@ -915,17 +918,97 @@ free_exit:
   return (HlMessage)KV_INITIAL_VALUE;
 }
 
-bool api_dict_to_keydict(void *rv, field_hash hashy, Dictionary dict, Error *err)
+// see also nlua_pop_keydict for the lua specific implementation
+bool api_dict_to_keydict(void *retval, FieldHashfn hashy, Dictionary dict, Error *err)
 {
   for (size_t i = 0; i < dict.size; i++) {
     String k = dict.items[i].key;
-    Object *field = hashy(rv, k.data, k.size);
+    KeySetLink *field = hashy(k.data, k.size);
     if (!field) {
       api_set_error(err, kErrorTypeValidation, "Invalid key: '%.*s'", (int)k.size, k.data);
       return false;
     }
 
-    *field = dict.items[i].value;
+    if (field->opt_index >= 0) {
+      OptKeySet *ks = (OptKeySet *)retval;
+      ks->is_set_ |= (1ULL << field->opt_index);
+    }
+
+    char *mem = ((char *)retval + field->ptr_off);
+    Object *value = &dict.items[i].value;
+
+    if (field->type == kObjectTypeNil) {
+      *(Object *)mem = *value;
+    } else if (field->type == kObjectTypeInteger) {
+      if (field->is_hlgroup) {
+        int hl_id = 0;
+        if (value->type != kObjectTypeNil) {
+          hl_id = object_to_hl_id(*value, k.data, err);
+          if (ERROR_SET(err)) {
+            return false;
+          }
+        }
+        *(Integer *)mem = hl_id;
+      } else {
+        VALIDATE_T(field->str, kObjectTypeInteger, value->type, {
+          return false;
+        });
+
+        *(Integer *)mem = value->data.integer;
+      }
+    } else if (field->type == kObjectTypeFloat) {
+      Float *val = (Float *)mem;
+      if (value->type == kObjectTypeInteger) {
+        *val = (Float)value->data.integer;
+      } else {
+        VALIDATE_T(field->str, kObjectTypeFloat, value->type, {
+          return false;
+        });
+        *val = value->data.floating;
+      }
+    } else if (field->type == kObjectTypeBoolean) {
+      // caller should check HAS_KEY to override the nil behavior, or GET_BOOL_OR_TRUE
+      // to directly use true when nil
+      *(Boolean *)mem = api_object_to_bool(*value, field->str, false, err);
+      if (ERROR_SET(err)) {
+        return false;
+      }
+    } else if (field->type == kObjectTypeString) {
+      VALIDATE_T(field->str, kObjectTypeString, value->type, {
+        return false;
+      });
+      *(String *)mem = value->data.string;
+    } else if (field->type == kObjectTypeArray) {
+      VALIDATE_T(field->str, kObjectTypeArray, value->type, {
+        return false;
+      });
+      *(Array *)mem = value->data.array;
+    } else if (field->type == kObjectTypeDictionary) {
+      Dictionary *val = (Dictionary *)mem;
+      // allow empty array as empty dict for lua (directly or via lua-client RPC)
+      if (value->type == kObjectTypeArray && value->data.array.size == 0) {
+        *val = (Dictionary)ARRAY_DICT_INIT;
+      } else if (value->type == kObjectTypeDictionary) {
+        *val = value->data.dictionary;
+      } else {
+        api_err_exp(err, field->str, api_typename(field->type), api_typename(value->type));
+        return false;
+      }
+    } else if (field->type == kObjectTypeBuffer || field->type == kObjectTypeWindow
+               || field->type == kObjectTypeTabpage) {
+      if (value->type == kObjectTypeInteger || value->type == field->type) {
+        *(handle_T *)mem = (handle_T)value->data.integer;
+      } else {
+        api_err_exp(err, field->str, api_typename(field->type), api_typename(value->type));
+        return false;
+      }
+    } else if (field->type == kObjectTypeLuaRef) {
+      api_set_error(err, kErrorTypeValidation, "Invalid key: '%.*s' is only allowed from Lua",
+                    (int)k.size, k.data);
+      return false;
+    } else {
+      abort();
+    }
   }
 
   return true;
@@ -934,7 +1017,18 @@ bool api_dict_to_keydict(void *rv, field_hash hashy, Dictionary dict, Error *err
 void api_free_keydict(void *dict, KeySetLink *table)
 {
   for (size_t i = 0; table[i].str; i++) {
-    api_free_object(*(Object *)((char *)dict + table[i].ptr_off));
+    char *mem = ((char *)dict + table[i].ptr_off);
+    if (table[i].type == kObjectTypeNil) {
+      api_free_object(*(Object *)mem);
+    } else if (table[i].type == kObjectTypeString) {
+      api_free_string(*(String *)mem);
+    } else if (table[i].type == kObjectTypeArray) {
+      api_free_array(*(Array *)mem);
+    } else if (table[i].type == kObjectTypeDictionary) {
+      api_free_dictionary(*(Dictionary *)mem);
+    } else if (table[i].type == kObjectTypeLuaRef) {
+      api_free_luaref(*(LuaRef *)mem);
+    }
   }
 }
 
@@ -965,7 +1059,7 @@ bool set_mark(buf_T *buf, String name, Integer line, Integer col, Error *err)
     }
   }
   assert(INT32_MIN <= line && line <= INT32_MAX);
-  pos_T pos = { (linenr_T)line, (int)col, (int)col };
+  pos_T pos = { (linenr_T)line, (int)col, 0 };
   res = setmark_pos(*name.data, &pos, buf->handle, NULL);
   if (!res) {
     if (deleting) {

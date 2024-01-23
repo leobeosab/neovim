@@ -12,8 +12,8 @@ describe(':global', function()
   it('can be interrupted using Ctrl-C in cmdline mode vim-patch:9.0.0082', function()
     local screen = Screen.new(75, 6)
     screen:set_default_attr_ids({
-      [0] = {bold = true, reverse = true},  -- MsgSeparator
-      [1] = {background = Screen.colors.Red, foreground = Screen.colors.White},  -- ErrorMsg
+      [0] = { bold = true, reverse = true }, -- MsgSeparator
+      [1] = { background = Screen.colors.Red, foreground = Screen.colors.White }, -- ErrorMsg
     })
     screen:attach()
 
@@ -24,20 +24,17 @@ describe(':global', function()
     ]])
 
     feed(':g/foo/norm :<C-V>;<CR>')
-    poke_eventloop()  -- Wait for :sleep to start
+    poke_eventloop() -- Wait for :sleep to start
     feed('<C-C>')
     screen:expect([[
       ^foo                                                                        |
-      foo                                                                        |
-      foo                                                                        |
-      foo                                                                        |
-      foo                                                                        |
+      foo                                                                        |*4
       {1:Interrupted}                                                                |
     ]])
 
     -- Also test in Ex mode
     feed('gQg/foo/norm :<C-V>;<CR>')
-    poke_eventloop()  -- Wait for :sleep to start
+    poke_eventloop() -- Wait for :sleep to start
     feed('<C-C>')
     screen:expect([[
       {0:                                                                           }|

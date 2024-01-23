@@ -11,7 +11,9 @@ describe('ffi.cdef', function()
       pending('missing LuaJIT FFI')
     end
 
-    eq(12, exec_lua[[
+    eq(
+      12,
+      exec_lua [[
       local ffi = require('ffi')
 
       ffi.cdef('int curwin_col_off(void);')
@@ -19,9 +21,12 @@ describe('ffi.cdef', function()
       vim.cmd('set number numberwidth=4 signcolumn=yes:4')
 
       return ffi.C.curwin_col_off()
-    ]])
+    ]]
+    )
 
-    eq(20, exec_lua[=[
+    eq(
+      20,
+      exec_lua [=[
       local ffi = require('ffi')
 
       ffi.cdef[[
@@ -38,7 +43,7 @@ describe('ffi.cdef', function()
           char *out,
           size_t outlen,
           char *fmt,
-          char *opt_name,
+          int opt_idx,
           int opt_scope,
           int fillchar,
           int maxwidth,
@@ -53,7 +58,7 @@ describe('ffi.cdef', function()
         ffi.new('char[1024]'),
         1024,
         ffi.cast('char*', 'StatusLineOfLength20'),
-        nil,
+        -1,
         0,
         0,
         0,
@@ -61,15 +66,19 @@ describe('ffi.cdef', function()
         nil,
         nil
       )
-    ]=])
+    ]=]
+    )
 
     -- Check that extern symbols are exported and accessible
-    eq(true, exec_lua[[
+    eq(
+      true,
+      exec_lua [[
       local ffi = require('ffi')
 
       ffi.cdef('uint64_t display_tick;')
 
       return ffi.C.display_tick >= 0
-    ]])
+    ]]
+    )
   end)
 end)

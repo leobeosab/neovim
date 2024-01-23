@@ -3,6 +3,7 @@ local Screen = require('test.functional.ui.screen')
 local clear = helpers.clear
 local exec = helpers.exec
 local feed = helpers.feed
+local assert_alive = helpers.assert_alive
 
 before_each(clear)
 
@@ -22,9 +23,9 @@ describe('smoothscroll', function()
       set number
     ]])
     feed('<C-Y>')
-    screen:expect({any = "  1 ^one"})
+    screen:expect({ any = '  1 ^one' })
     feed('<C-E><C-E><C-E>')
-    screen:expect({any = "  2 ^two"})
+    screen:expect({ any = '  2 ^two' })
   end)
 
   -- oldtest: Test_smoothscroll_CtrlE_CtrlY()
@@ -35,17 +36,14 @@ describe('smoothscroll', function()
       :5
     ]])
     local s1 = [[
-      word word word word word word word word |
-      word word word word word word word word |
+      word word word word word word word word |*2
       word word word word                     |
       line three                              |
       long word long word long word long word |
       long word long word long word           |
       ^line                                    |
-      line                                    |
-      line                                    |
-      ~                                       |
-      ~                                       |
+      line                                    |*2
+      ~                                       |*2
                                               |
     ]]
     local s2 = [[
@@ -55,11 +53,8 @@ describe('smoothscroll', function()
       long word long word long word long word |
       long word long word long word           |
       ^line                                    |
-      line                                    |
-      line                                    |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      line                                    |*2
+      ~                                       |*3
                                               |
     ]]
     local s3 = [[
@@ -68,26 +63,17 @@ describe('smoothscroll', function()
       long word long word long word long word |
       long word long word long word           |
       ^line                                    |
-      line                                    |
-      line                                    |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      line                                    |*2
+      ~                                       |*4
                                               |
     ]]
     local s4 = [[
       line three                              |
       long word long word long word long word |
       long word long word long word           |
-      line                                    |
-      line                                    |
+      line                                    |*2
       ^line                                    |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*5
                                               |
     ]]
     local s5 = [[
@@ -95,13 +81,9 @@ describe('smoothscroll', function()
       line three                              |
       long word long word long word long word |
       long word long word long word           |
-      line                                    |
-      line                                    |
+      line                                    |*2
       ^line                                    |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*4
                                               |
     ]]
     local s6 = [[
@@ -110,38 +92,30 @@ describe('smoothscroll', function()
       line three                              |
       long word long word long word long word |
       long word long word long word           |
-      line                                    |
-      line                                    |
+      line                                    |*2
       ^line                                    |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*3
                                               |
     ]]
     local s7 = [[
-      word word word word word word word word |
-      word word word word word word word word |
+      word word word word word word word word |*2
       word word word word                     |
       line three                              |
       long word long word long word long word |
       long word long word long word           |
-      line                                    |
-      line                                    |
+      line                                    |*2
       ^line                                    |
-      ~                                       |
-      ~                                       |
+      ~                                       |*2
                                               |
     ]]
     local s8 = [[
       line one                                |
-      word word word word word word word word |
-      word word word word word word word word |
+      word word word word word word word word |*2
       word word word word                     |
       line three                              |
       long word long word long word long word |
       long word long word long word           |
-      line                                    |
-      line                                    |
+      line                                    |*2
       ^line                                    |
       ~                                       |
                                               |
@@ -186,8 +160,7 @@ describe('smoothscroll', function()
       ϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛϛ^ϛϛϛϛϛ|
       ϛϛϛϛϛ                                   |
       222222222222222222222222222222222222    |
-      ~                                       |
-      ~                                       |
+      ~                                       |*2
                                               |
     ]])
   end)
@@ -216,9 +189,7 @@ describe('smoothscroll', function()
         3 ^line                                |
         4 line                                |
         5 line                                |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*3
                                               |
     ]])
     feed('<C-E>')
@@ -230,10 +201,7 @@ describe('smoothscroll', function()
         3 ^line                                |
         4 line                                |
         5 line                                |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*4
                                               |
     ]])
     feed('<C-E>')
@@ -244,11 +212,7 @@ describe('smoothscroll', function()
         3 ^line                                |
         4 line                                |
         5 line                                |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*5
                                               |
     ]])
     exec('set cpo-=n')
@@ -260,10 +224,7 @@ describe('smoothscroll', function()
         3 ^line                                |
         4 line                                |
         5 line                                |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*4
                                               |
     ]])
     feed('<C-Y>')
@@ -276,9 +237,7 @@ describe('smoothscroll', function()
         3 ^line                                |
         4 line                                |
         5 line                                |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*3
                                               |
     ]])
     feed('<C-Y>')
@@ -292,8 +251,7 @@ describe('smoothscroll', function()
         3 ^line                                |
         4 line                                |
         5 line                                |
-      ~                                       |
-      ~                                       |
+      ~                                       |*2
                                               |
     ]])
     exec('botright split')
@@ -350,18 +308,13 @@ describe('smoothscroll', function()
           y long text very long text very long|
            text very long text very long text |
         1 three                               |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*6
       --No lines in buffer--                  |
     ]])
   end)
 
   -- oldtest: Test_smoothscroll_list()
-  it("works with list mode", function()
+  it('works with list mode', function()
     screen:try_resize(40, 8)
     exec([[
       set smoothscroll scrolloff=0
@@ -375,8 +328,7 @@ describe('smoothscroll', function()
       very long text very long text very long |
       text very long text-                    |
       three                                   |
-      ~                                       |
-      ~                                       |
+      ~                                       |*2
                                               |
     ]])
     exec('set listchars+=precedes:#')
@@ -386,14 +338,13 @@ describe('smoothscroll', function()
       very long text very long text very long |
       text very long text-                    |
       three                                   |
-      ~                                       |
-      ~                                       |
+      ~                                       |*2
                                               |
     ]])
   end)
 
   -- oldtest: Test_smoothscroll_diff_mode()
-  it("works with diff mode", function()
+  it('works with diff mode', function()
     screen:try_resize(40, 8)
     exec([[
       let text = 'just some text here'
@@ -407,8 +358,7 @@ describe('smoothscroll', function()
     ]])
     screen:expect([[
       - ^just some text here                   |
-      ~                                       |
-      ~                                       |
+      ~                                       |*2
       [No Name] [+]                           |
       - just some text here                   |
       ~                                       |
@@ -475,7 +425,7 @@ describe('smoothscroll', function()
   end)
 
   -- oldtest: Test_smoothscroll_wrap_long_line()
-  it("adjusts the cursor position in a long line", function()
+  it('adjusts the cursor position in a long line', function()
     screen:try_resize(40, 6)
     exec([[
       call setline(1, ['one', 'two', 'Line' .. (' with lots of text'->repeat(30)) .. ' end', 'four'])
@@ -579,10 +529,7 @@ describe('smoothscroll', function()
     feed('zt')
     screen:expect([[
       ^four                                    |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*4
                                               |
     ]])
     feed('zz')
@@ -590,8 +537,7 @@ describe('smoothscroll', function()
       <<<of text with lots of text with lots o|
       f text with lots of text end            |
       ^four                                    |
-      ~                                       |
-      ~                                       |
+      ~                                       |*2
                                               |
     ]])
     feed('zb')
@@ -607,7 +553,9 @@ describe('smoothscroll', function()
     -- This time, use a shorter long line that is barely long enough to span more
     -- than one window. Note that the cursor is at the bottom this time because
     -- Vim prefers to do so if we are scrolling a few lines only.
-    exec("call setline(1, ['one', 'two', 'Line' .. (' with lots of text'->repeat(10)) .. ' end', 'four'])")
+    exec(
+      "call setline(1, ['one', 'two', 'Line' .. (' with lots of text'->repeat(10)) .. ' end', 'four'])"
+    )
     -- Currently visible lines were replaced, test that the lines and cursor
     -- are correctly displayed.
     screen:expect_unchanged()
@@ -629,7 +577,7 @@ describe('smoothscroll', function()
   end)
 
   -- oldtest: Test_smoothscroll_one_long_line()
-  it("scrolls correctly when moving the cursor", function()
+  it('scrolls correctly when moving the cursor', function()
     screen:try_resize(40, 6)
     exec([[
       call setline(1, 'with lots of text '->repeat(7))
@@ -649,8 +597,7 @@ describe('smoothscroll', function()
       <<<ts of text with lots of text with lot|
       ^s of text with lots of text with lots of|
        text                                   |
-      ~                                       |
-      ~                                       |
+      ~                                       |*2
                                               |
     ]])
     feed('0')
@@ -658,7 +605,7 @@ describe('smoothscroll', function()
   end)
 
   -- oldtest: Test_smoothscroll_long_line_showbreak()
-  it("cursor is not one screen line too far down", function()
+  it('cursor is not one screen line too far down', function()
     screen:try_resize(40, 6)
     -- a line that spans four screen lines
     exec("call setline(1, 'with lots of text in one line '->repeat(6))")
@@ -695,28 +642,23 @@ describe('smoothscroll', function()
     screen:expect([[
       ^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       口口口口口口口口口口                    |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*3
                                               |
     ]])
     feed('<C-E>')
     screen:expect([[
       <<< 口口口口口口口^口                    |
-      ~                                       |
-      ~                                       |
-      ~                                       |
-      ~                                       |
+      ~                                       |*4
                                               |
     ]])
   end)
 
   -- oldtest: Test_smoothscroll_zero_width()
-  it("does not divide by zero with a narrow window", function()
+  it('does not divide by zero with a narrow window', function()
     screen:try_resize(12, 2)
     screen:set_default_attr_ids({
-      [1] = {foreground = Screen.colors.Brown},
-      [2] = {foreground = Screen.colors.Blue1, bold = true},
+      [1] = { foreground = Screen.colors.Brown },
+      [2] = { foreground = Screen.colors.Blue1, bold = true },
     })
     exec([[
       call setline(1, ['a'->repeat(100)])
@@ -738,7 +680,7 @@ describe('smoothscroll', function()
   end)
 
   -- oldtest: Test_smoothscroll_ins_lines()
-  it("does not unnecessarily insert lines", function()
+  it('does not unnecessarily insert lines', function()
     screen:try_resize(40, 6)
     exec([=[
       set wrap smoothscroll scrolloff=0 conceallevel=2 concealcursor=nc
@@ -762,7 +704,7 @@ describe('smoothscroll', function()
   end)
 
   -- oldtest: Test_smoothscroll_cursormoved_line()
-  it("does not place the cursor in the command line", function()
+  it('does not place the cursor in the command line', function()
     screen:try_resize(40, 6)
     exec([=[
       set smoothscroll
@@ -785,7 +727,7 @@ describe('smoothscroll', function()
   end)
 
   -- oldtest: Test_smoothscroll_eob()
-  it("does not scroll halfway at end of buffer", function()
+  it('does not scroll halfway at end of buffer', function()
     screen:try_resize(40, 10)
     exec([[
       set smoothscroll
@@ -794,14 +736,7 @@ describe('smoothscroll', function()
     ]])
     -- does not scroll halfway when scrolling to end of buffer
     screen:expect([[
-                                              |
-                                              |
-                                              |
-                                              |
-                                              |
-                                              |
-                                              |
-                                              |
+                                              |*8
       ^                                        |
                                               |
     ]])
@@ -810,26 +745,20 @@ describe('smoothscroll', function()
     -- cursor is not placed below window
     screen:expect([[
       <<<aaaaaaaaaaaaaaaaa                    |
-                                              |
-                                              |
-                                              |
-                                              |
-                                              |
-                                              |
-                                              |
+                                              |*7
       ^                                        |
                                               |
     ]])
   end)
 
   -- oldtest: Test_smoothscroll_incsearch()
-  it("does not reset skipcol when doing incremental search on the same word", function()
+  it('does not reset skipcol when doing incremental search on the same word', function()
     screen:try_resize(40, 8)
     screen:set_default_attr_ids({
-      [1] = {foreground = Screen.colors.Brown},
-      [2] = {foreground = Screen.colors.Blue1, bold = true},
-      [3] = {background = Screen.colors.Yellow1},
-      [4] = {reverse = true},
+      [1] = { foreground = Screen.colors.Brown },
+      [2] = { foreground = Screen.colors.Blue1, bold = true },
+      [3] = { background = Screen.colors.Yellow1 },
+      [4] = { reverse = true },
     })
     exec([[
       set smoothscroll number scrolloff=0 incsearch
@@ -884,11 +813,11 @@ describe('smoothscroll', function()
   end)
 
   -- oldtest: Test_smoothscroll_multi_skipcol()
-  it('scrolling mulitple lines and stopping at non-zero skipcol', function()
+  it('scrolling multiple lines and stopping at non-zero skipcol', function()
     screen:try_resize(40, 10)
     screen:set_default_attr_ids({
-      [0] = {foreground = Screen.colors.Blue, bold = true},
-      [1] = {background = Screen.colors.Grey90},
+      [0] = { foreground = Screen.colors.Blue, bold = true },
+      [1] = { background = Screen.colors.Grey90 },
     })
     exec([[
       setlocal cursorline scrolloff=0 smoothscroll
@@ -906,8 +835,7 @@ describe('smoothscroll', function()
       aaaaaaaaaa                              |
       aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       aaaaaaaaaa                              |
-                                              |
-                                              |
+                                              |*2
       bbb                                     |
                                               |
     ]])
@@ -916,25 +844,19 @@ describe('smoothscroll', function()
       {0:<<<}{1:aaaaaa^a                              }|
       aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       aaaaaaaaaa                              |
-                                              |
-                                              |
+                                              |*2
       bbb                                     |
       ccc                                     |
-      {0:~                                       }|
-      {0:~                                       }|
+      {0:~                                       }|*2
                                               |
     ]])
     feed('2<C-E>')
     screen:expect([[
       {0:<<<}{1:aaaaaa^a                              }|
-                                              |
-                                              |
+                                              |*2
       bbb                                     |
       ccc                                     |
-      {0:~                                       }|
-      {0:~                                       }|
-      {0:~                                       }|
-      {0:~                                       }|
+      {0:~                                       }|*4
                                               |
     ]])
   end)
@@ -943,10 +865,10 @@ describe('smoothscroll', function()
   it('does not divide by zero in zero-width window', function()
     screen:try_resize(40, 19)
     screen:set_default_attr_ids({
-      [1] = {foreground = Screen.colors.Brown};  -- LineNr
-      [2] = {bold = true, foreground = Screen.colors.Blue};  -- NonText
-      [3] = {bold = true, reverse = true};  -- StatusLine
-      [4] = {reverse = true};  -- StatusLineNC
+      [1] = { foreground = Screen.colors.Brown }, -- LineNr
+      [2] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+      [3] = { bold = true, reverse = true }, -- StatusLine
+      [4] = { reverse = true }, -- StatusLineNC
     })
     exec([[
       silent normal yy
@@ -961,28 +883,53 @@ describe('smoothscroll', function()
     ]])
     screen:expect([[
       {1: }│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
-      {2:@}│                                      |
+      {2:@}│                                      |*15
       {2:^@}│                                      |
       {3:< }{4:[No Name] [+]                         }|
                                               |
     ]])
   end)
 
-  it("works with virt_lines above and below", function()
+  -- oldtest: Test_smoothscroll_cursor_top()
+  it('resets skipcol when scrolling cursor to top', function()
+    screen:try_resize(40, 12)
+    exec([[
+      set smoothscroll scrolloff=2
+      new | 11resize | wincmd j
+      call setline(1, ['line1', 'line2', 'line3'->repeat(20), 'line4'])
+      exe "norm G3\<C-E>k"
+    ]])
+    screen:expect([[
+                                              |
+      [No Name]                               |
+      line1                                   |
+      line2                                   |
+      ^line3line3line3line3line3line3line3line3|
+      line3line3line3line3line3line3line3line3|
+      line3line3line3line3                    |
+      line4                                   |
+      ~                                       |*2
+      [No Name] [+]                           |
+                                              |
+    ]])
+  end)
+
+  -- oldtest: Test_smoothscroll_crash()
+  it('does not crash with small window and cpo+=n', function()
+    screen:try_resize(40, 12)
+    exec([[
+      20 new
+      vsp
+      put =repeat('aaaa', 20)
+      set nu fdc=1  smoothscroll cpo+=n
+      vert resize 0
+      exe "norm! 0\<c-e>"
+    ]])
+    feed('2<C-E>')
+    assert_alive()
+  end)
+
+  it('works with virt_lines above and below', function()
     screen:try_resize(55, 7)
     exec([=[
       call setline(1, ['Line' .. (' with some text'->repeat(7))]->repeat(3))
@@ -1055,6 +1002,22 @@ describe('smoothscroll', function()
     ]])
   end)
 
+  it('works in Insert mode at bottom of window', function()
+    screen:try_resize(40, 9)
+    exec([[
+      call setline(1, repeat([repeat('A very long line ...', 10)], 5))
+      set wrap smoothscroll scrolloff=0
+    ]])
+    feed('Go123456789<CR>')
+    screen:expect([[
+      <<<ery long line ...A very long line ...|
+      A very long line ...A very long line ...|*5
+      123456789                               |
+      ^                                        |
+      -- INSERT --                            |
+    ]])
+  end)
+
   it('<<< marker shows with tabline, winbar and splits', function()
     screen:try_resize(40, 12)
     exec([[
@@ -1112,8 +1075,8 @@ describe('smoothscroll', function()
 
   it('works with very long line', function()
     screen:set_default_attr_ids({
-      [1] = {foreground = Screen.colors.Brown},
-      [2] = {foreground = Screen.colors.Blue1, bold = true},
+      [1] = { foreground = Screen.colors.Brown },
+      [2] = { foreground = Screen.colors.Blue1, bold = true },
     })
     exec([[
       edit test/functional/fixtures/bigfile_oneline.txt

@@ -2,8 +2,8 @@
 local helpers = require('test.functional.helpers')(after_each)
 local command, clear = helpers.command, helpers.clear
 local source, expect = helpers.source, helpers.expect
-local exc_exec = helpers.exc_exec;
-local matches = helpers.matches;
+local exc_exec = helpers.exc_exec
+local matches = helpers.matches
 local Screen = require('test.functional.ui.screen')
 
 describe('options', function()
@@ -66,17 +66,7 @@ describe('set', function()
     command('verbose set scroll?')
     screen:expect([[
                                                 |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
-      ~                                         |
+      ~                                         |*11
                                                 |
         scroll=7                                |
               Last set from changed window size |

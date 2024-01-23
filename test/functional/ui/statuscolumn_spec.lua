@@ -7,10 +7,11 @@ local exec = helpers.exec
 local eval = helpers.eval
 local exec_lua = helpers.exec_lua
 local feed = helpers.feed
-local meths = helpers.meths
+local api = helpers.api
 local pcall_err = helpers.pcall_err
+local assert_alive = helpers.assert_alive
 
-local mousemodels = { "extend", "popup", "popup_setpos" }
+local mousemodels = { 'extend', 'popup', 'popup_setpos' }
 
 describe('statuscolumn', function()
   local screen
@@ -22,7 +23,9 @@ describe('statuscolumn', function()
   end)
 
   it("fails with invalid 'statuscolumn'", function()
-    command([[set stc=%{v:relnum?v:relnum:(v:lnum==5?invalid:v:lnum)}\ ]])
+    command(
+      [[set stc=%{v:relnum?v:relnum:(v:lnum==5?'truncate':v:lnum)}%{!v:relnum&&v:lnum==5?invalid:''}\ ]]
+    )
     screen:expect([[
       4  aaaaa                                             |
       3  aaaaa                                             |
@@ -42,25 +45,48 @@ describe('statuscolumn', function()
     command('norm 5G')
     eq('Vim(redraw):E121: Undefined variable: invalid', pcall_err(command, 'redraw!'))
     eq('', eval('&statuscolumn'))
+    screen:expect([[
+       4 aaaaa                                             |
+       5 ^aaaaa                                             |
+       6 aaaaa                                             |
+       7 aaaaa                                             |
+       8 aaaaa                                             |
+       9 aaaaa                                             |
+      10 aaaaa                                             |
+      11 aaaaa                                             |
+      12 aaaaa                                             |
+      13 aaaaa                                             |
+      14 aaaaa                                             |
+      15 aaaaa                                             |
+      16 aaaaa                                             |
+                                                           |
+    ]])
   end)
 
   it("widens with irregular 'statuscolumn' width", function()
-    command([[set stc=%{v:relnum?v:relnum:(v:lnum==5?'bbbbb':v:lnum)}]])
-    command('norm 5G | redraw!')
+    screen:try_resize(screen._width, 4)
+    command([=[
+      set stc=%{v:relnum?v:relnum:(v:lnum==5?'bbbbb':v:lnum)}
+      let ns = nvim_create_namespace('')
+      call nvim_buf_set_extmark(0, ns, 3, 0, {'virt_text':[['virt_text']]})
+      norm 5G | redraw!
+    ]=])
     screen:expect([[
+      1    aaaaa virt_text                                 |
+      bbbbba^eaaa                                           |
       1    aaaaa                                           |
+                                                           |
+    ]])
+    -- Doesn't crash when trying to fill click defs that do not fit (#26845)
+    command('norm gg')
+    command([=[
+      set stc=%@Click@%{v:relnum?v:relnum:(v:lnum==5?'bbbbb':v:lnum)}%T
+      norm 5Gzt | redraw!
+    ]=])
+    screen:expect([[
       bbbbba^eaaa                                           |
       1    aaaaa                                           |
       2    aaaaa                                           |
-      3    aaaaa                                           |
-      4    aaaaa                                           |
-      5    aaaaa                                           |
-      6    aaaaa                                           |
-      7    aaaaa                                           |
-      8    aaaaa                                           |
-      9    aaaaa                                           |
-      10   aaaaa                                           |
-      11   aaaaa                                           |
                                                            |
     ]])
   end)
@@ -129,12 +155,14 @@ describe('statuscolumn', function()
   end)
 
   it("works with highlighted 'statuscolumn'", function()
-    command([[set stc=%#NonText#%{&nu?v:lnum:''}]] ..
-            [[%=%{&rnu&&(v:lnum%2)?'\ '.v:relnum:''}]] ..
-            [[%#LineNr#%{&rnu&&!(v:lnum%2)?'\ '.v:relnum:''}│]])
+    command(
+      [[set stc=%#NonText#%{&nu?v:lnum:''}]]
+        .. [[%=%{&rnu&&(v:lnum%2)?'\ '.v:relnum:''}]]
+        .. [[%#LineNr#%{&rnu&&!(v:lnum%2)?'\ '.v:relnum:''}│]]
+    )
     screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},
-      [1] = {foreground = Screen.colors.Brown},
+      [0] = { bold = true, foreground = Screen.colors.Blue },
+      [1] = { foreground = Screen.colors.Brown },
     })
     screen:expect([[
       {0:4 }{1:│}aaaaa                                             |
@@ -192,13 +220,13 @@ describe('statuscolumn', function()
     command([[set stc=%C%s%=%{v:virtnum?'':v:lnum}│\ ]])
     command("call setline(1,repeat([repeat('aaaaa',10)],16))")
     screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},
-      [1] = {foreground = Screen.colors.Brown},
-      [2] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.WebGrey},
-      [3] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.LightGrey},
-      [4] = {bold = true, foreground = Screen.colors.Brown},
-      [5] = {foreground = Screen.colors.Red},
-      [6] = {foreground = Screen.colors.Red, background = Screen.colors.LightGrey},
+      [0] = { bold = true, foreground = Screen.colors.Blue },
+      [1] = { foreground = Screen.colors.Brown },
+      [2] = { foreground = Screen.colors.DarkBlue, background = Screen.colors.WebGrey },
+      [3] = { foreground = Screen.colors.DarkBlue, background = Screen.colors.LightGrey },
+      [4] = { bold = true, foreground = Screen.colors.Brown },
+      [5] = { foreground = Screen.colors.Red },
+      [6] = { foreground = Screen.colors.Red, background = Screen.colors.LightGrey },
     })
     command('hi! CursorLine guifg=Red guibg=NONE')
     screen:expect([[
@@ -376,6 +404,7 @@ describe('statuscolumn', function()
                                                            |
     ]])
     command('set breakindent')
+    command('sign unplace 2')
     feed('J2gjg0')
     screen:expect([[
       {2: }{4: 0│}{1:>>}{2:                }{4: }{5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
@@ -421,14 +450,16 @@ describe('statuscolumn', function()
       vim.api.nvim_buf_set_extmark(0, ns, 4, 0, { virt_lines = {{{"virt_line", ""}}} })
     ]])
     command('set foldcolumn=0 signcolumn=no')
-    command([[set stc=%{v:virtnum<0?'virtual':(!v:virtnum?'buffer':'wrapped')}%=%{'\ '.v:virtnum.'\ '.v:lnum}]])
+    command(
+      [[set stc=%{v:virtnum<0?'virtual':(!v:virtnum?'buffer':'wrapped')}%=%{'\ '.v:virtnum.'\ '.v:lnum}]]
+    )
     screen:expect([[
       {1:buffer  0 4}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       {1:wrapped 1 4}aaaaaaaa                                  |
       {1:buffer  0 5}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       {1:wrapped 1 5}aaaaaaaa                                  |
       {1:virtual-2 5}virt_line                                 |
-      {1:virtual-2 5}virt_line above                           |
+      {1:virtual-1 5}virt_line above                           |
       {1:buffer  0 6}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       {1:wrapped 1 6}aaaaaaaa                                  |
       {1:buffer  0 7}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
@@ -442,21 +473,19 @@ describe('statuscolumn', function()
     exec_lua([[
       vim.api.nvim_buf_set_extmark(0, ns, 15, 0, { virt_lines = {{{"END", ""}}} })
     ]])
-    feed('Gzz')
+    feed('GkJzz')
     screen:expect([[
+      {1:buffer  0 12}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 1 12}aaaaaaaaa                                |
       {1:buffer  0 13}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       {1:wrapped 1 13}aaaaaaaaa                                |
       {1:buffer  0 14}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       {1:wrapped 1 14}aaaaaaaaa                                |
-      {1:buffer  0 15}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      {1:wrapped 1 15}aaaaaaaaa                                |
-      {4:buffer  0 16}{5:^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
-      {4:wrapped 1 16}{5:aaaaaaaaa                                }|
-      {1:virtual-1 16}END                                      |
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
+      {4:buffer  0 15}{5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {4:wrapped 1 15}{5:aaaaaaaaa^ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {4:wrapped 2 15}{5:aaaaaaaaaaaaaaaaaaa                      }|
+      {1:virtual-1 15}END                                      |
+      {0:~                                                    }|*3
                                                            |
     ]])
     -- Also test virt_lines when 'cpoptions' includes "n"
@@ -466,18 +495,40 @@ describe('statuscolumn', function()
       vim.api.nvim_buf_set_extmark(0, ns, 14, 0, { virt_lines = {{{"virt_line2", ""}}} })
     ]])
     screen:expect([[
+      {1:buffer  0 12}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      aaaaaaaaa                                            |
       {1:buffer  0 13}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       aaaaaaaaa                                            |
       {1:buffer  0 14}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       aaaaaaaaa                                            |
-      {1:buffer  0 15}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaa                                            |
-      {1:virtual-2 15}virt_line1                               |
+      {4:buffer  0 15}{5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {5:aaaaaaaaa^ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {5:aaaaaaa                                              }|
+      {1:virtual-3 15}virt_line1                               |
       {1:virtual-2 15}virt_line2                               |
-      {1:buffer  0 16}{5:^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
-      {5:aaaaaaaaa                                            }|
-      {1:virtual-1 16}END                                      |
+      {1:virtual-1 15}END                                      |
       {0:~                                                    }|
+                                                           |
+    ]])
+    -- Also test "col_rows" code path for 'relativenumber' cursor movement
+    command([[
+      set cpoptions-=n nocursorline relativenumber
+      set stc=%{v:virtnum<0?'virtual':(!v:virtnum?'buffer':'wrapped')}%=%{'\ '.v:virtnum.'\ '.v:lnum.'\ '.v:relnum}
+    ]])
+    feed('kk')
+    screen:expect([[
+      {1:buffer  0 12 1}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 1 12 1}aaaaaaaaaaa                            |
+      {1:buffer  0 13 0}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 1 13 0}aaaaaaaaaa^a                            |
+      {1:buffer  0 14 1}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 1 14 1}aaaaaaaaaaa                            |
+      {1:buffer  0 15 2}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 1 15 2}aaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 2 15 2}aaaaaaaaaaaaaaaaaaaaaaa                |
+      {1:virtual-3 15 2}virt_line1                             |
+      {1:virtual-2 15 2}virt_line2                             |
+      {1:virtual-1 15 2}END                                    |
       {0:~                                                    }|
                                                            |
     ]])
@@ -486,14 +537,14 @@ describe('statuscolumn', function()
   it('does not corrupt the screen with minwid sign item', function()
     screen:try_resize(screen._width, 3)
     screen:set_default_attr_ids({
-      [0] = {foreground = Screen.colors.Brown},
-      [1] = {foreground = Screen.colors.Blue4, background = Screen.colors.Gray},
+      [0] = { foreground = Screen.colors.Brown },
+      [1] = { foreground = Screen.colors.Blue4, background = Screen.colors.Gray },
     })
     command([[set stc=%6s\ %l]])
     exec_lua('vim.api.nvim_buf_set_extmark(0, ns, 7, 0, {sign_text = "𒀀"})')
     screen:expect([[
-      {0:    𒀀  8}^aaaaa                                        |
-      {0:    }{1:  }{0: 9}aaaaa                                        |
+      {0:    𒀀  8 }^aaaaa                                       |
+      {0:    }{1:  }{0: 9 }aaaaa                                       |
                                                            |
     ]])
   end)
@@ -514,71 +565,123 @@ describe('statuscolumn', function()
       end)
 
       it('clicks work with mousemodel=' .. model, function()
-        meths.set_option_value('statuscolumn', '%0@MyClickFunc@%=%l%T', {})
-        meths.input_mouse('left', 'press', '', 0, 0, 0)
-        eq('0 1 l 4', eval("g:testvar"))
-        meths.input_mouse('left', 'press', '', 0, 0, 0)
-        eq('0 2 l 4', eval("g:testvar"))
-        meths.input_mouse('left', 'press', '', 0, 0, 0)
-        eq('0 3 l 4', eval("g:testvar"))
-        meths.input_mouse('left', 'press', '', 0, 0, 0)
-        eq('0 4 l 4', eval("g:testvar"))
-        meths.input_mouse('right', 'press', '', 0, 3, 0)
-        eq('0 1 r 7', eval("g:testvar"))
-        meths.input_mouse('right', 'press', '', 0, 3, 0)
-        eq('0 2 r 7', eval("g:testvar"))
-        meths.input_mouse('right', 'press', '', 0, 3, 0)
-        eq('0 3 r 7', eval("g:testvar"))
-        meths.input_mouse('right', 'press', '', 0, 3, 0)
-        eq('0 4 r 7', eval("g:testvar"))
+        api.nvim_set_option_value('statuscolumn', '%0@MyClickFunc@%=%l%T', {})
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 0)
+        eq('0 1 l 4', eval('g:testvar'))
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 0)
+        eq('0 2 l 4', eval('g:testvar'))
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 0)
+        eq('0 3 l 4', eval('g:testvar'))
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 0)
+        eq('0 4 l 4', eval('g:testvar'))
+        api.nvim_input_mouse('right', 'press', '', 0, 3, 0)
+        eq('0 1 r 7', eval('g:testvar'))
+        api.nvim_input_mouse('right', 'press', '', 0, 3, 0)
+        eq('0 2 r 7', eval('g:testvar'))
+        api.nvim_input_mouse('right', 'press', '', 0, 3, 0)
+        eq('0 3 r 7', eval('g:testvar'))
+        api.nvim_input_mouse('right', 'press', '', 0, 3, 0)
+        eq('0 4 r 7', eval('g:testvar'))
+
+        command('rightbelow vsplit')
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 27)
+        eq('0 1 l 4', eval('g:testvar'))
+        api.nvim_input_mouse('right', 'press', '', 0, 3, 27)
+        eq('0 1 r 7', eval('g:testvar'))
+        command('setlocal rightleft')
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 52)
+        eq('0 1 l 4', eval('g:testvar'))
+        api.nvim_input_mouse('right', 'press', '', 0, 3, 52)
+        eq('0 1 r 7', eval('g:testvar'))
+        command('wincmd H')
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 25)
+        eq('0 1 l 4', eval('g:testvar'))
+        api.nvim_input_mouse('right', 'press', '', 0, 3, 25)
+        eq('0 1 r 7', eval('g:testvar'))
+        command('close')
+
         command('set laststatus=2 winbar=%f')
         command('let g:testvar = ""')
         -- Check that winbar click doesn't register as statuscolumn click
-        meths.input_mouse('right', 'press', '', 0, 0, 0)
-        eq('', eval("g:testvar"))
+        api.nvim_input_mouse('right', 'press', '', 0, 0, 0)
+        eq('', eval('g:testvar'))
         -- Check that statusline click doesn't register as statuscolumn click
-        meths.input_mouse('right', 'press', '', 0, 12, 0)
-        eq('', eval("g:testvar"))
+        api.nvim_input_mouse('right', 'press', '', 0, 12, 0)
+        eq('', eval('g:testvar'))
         -- Check that cmdline click doesn't register as statuscolumn click
-        meths.input_mouse('right', 'press', '', 0, 13, 0)
-        eq('', eval("g:testvar"))
+        api.nvim_input_mouse('right', 'press', '', 0, 13, 0)
+        eq('', eval('g:testvar'))
       end)
 
       it('clicks and highlights work with control characters', function()
-        meths.set_option_value('statuscolumn', '\t%#NonText#\1%0@MyClickFunc@\t\1%T\t%##\1', {})
-        screen:expect{grid=[[
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
+        api.nvim_set_option_value('statuscolumn', '\t%#NonText#\1%0@MyClickFunc@\t\1%T\t%##\1', {})
+        screen:expect {
+          grid = [[
+          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |*4
           {1:^I}{0:^A^I^A^I}{1:^A}^aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
+          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |*8
                                                                |
-        ]], attr_ids={
-          [0] = {foreground = Screen.colors.Blue, bold = true};  -- NonText
-          [1] = {foreground = Screen.colors.Brown};  -- LineNr
-        }}
-        meths.input_mouse('right', 'press', '', 0, 4, 3)
-        eq('', eval("g:testvar"))
-        meths.input_mouse('left', 'press', '', 0, 5, 8)
-        eq('', eval("g:testvar"))
-        meths.input_mouse('right', 'press', '', 0, 6, 4)
-        eq('0 1 r 10', eval("g:testvar"))
-        meths.input_mouse('left', 'press', '', 0, 7, 7)
-        eq('0 1 l 11', eval("g:testvar"))
+        ]],
+          attr_ids = {
+            [0] = { foreground = Screen.colors.Blue, bold = true }, -- NonText
+            [1] = { foreground = Screen.colors.Brown }, -- LineNr
+          },
+        }
+        api.nvim_input_mouse('right', 'press', '', 0, 4, 3)
+        eq('', eval('g:testvar'))
+        api.nvim_input_mouse('left', 'press', '', 0, 5, 8)
+        eq('', eval('g:testvar'))
+        api.nvim_input_mouse('right', 'press', '', 0, 6, 4)
+        eq('0 1 r 10', eval('g:testvar'))
+        api.nvim_input_mouse('left', 'press', '', 0, 7, 7)
+        eq('0 1 l 11', eval('g:testvar'))
+      end)
+
+      it('popupmenu callback does not drag mouse on close', function()
+        screen:try_resize(screen._width, 2)
+        screen:set_default_attr_ids({
+          [0] = { foreground = Screen.colors.Brown },
+          [1] = { background = Screen.colors.Plum1 },
+        })
+        api.nvim_set_option_value('statuscolumn', '%0@MyClickFunc@%l%T', {})
+        exec([[
+          function! MyClickFunc(minwid, clicks, button, mods)
+            let g:testvar = printf("%d %d %s %d", a:minwid, a:clicks, a:button, getmousepos().line)
+            menu PopupStc.Echo <cmd>echo g:testvar<CR>
+            popup PopupStc
+          endfunction
+        ]])
+        -- clicking an item does not drag mouse
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 0)
+        screen:expect([[
+          {0:8 }^aaaaa                                              |
+           {1: Echo }                                              |
+        ]])
+        api.nvim_input_mouse('left', 'press', '', 0, 1, 5)
+        api.nvim_input_mouse('left', 'release', '', 0, 1, 5)
+        screen:expect([[
+          {0:8 }^aaaaa                                              |
+          0 1 l 8                                              |
+        ]])
+        command('echo')
+        -- clicking outside to close the menu does not drag mouse
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 0)
+        screen:expect([[
+          {0:8 }^aaaaa                                              |
+           {1: Echo }                                              |
+        ]])
+        api.nvim_input_mouse('left', 'press', '', 0, 0, 10)
+        api.nvim_input_mouse('left', 'release', '', 0, 0, 10)
+        screen:expect([[
+          {0:8 }^aaaaa                                              |
+                                                               |
+        ]])
       end)
     end)
   end
 
-  it('click labels do not leak memory', function()
-    command([[
+  it('click labels do not leak memory #21878', function()
+    exec([[
       set laststatus=2
       setlocal statuscolumn=%0@MyClickFunc@abcd%T
       4vsplit
@@ -590,10 +693,24 @@ describe('statuscolumn', function()
     ]])
   end)
 
+  it('click labels do not crash when initial width is 0 #24428', function()
+    exec([[
+      set nonumber
+      bwipe!
+      setlocal statuscolumn=abcd
+      redraw
+      setlocal statuscolumn=%0@MyClickFunc@abcd%T
+      redraw
+    ]])
+    assert_alive()
+  end)
+
   it('works with foldcolumn', function()
     -- Fits maximum multibyte foldcolumn #21759
     command([[set stc=%C%=%l\  fdc=9 fillchars=foldsep:𒀀]])
-    for _ = 0,8 do command('norm zfjzo') end
+    for _ = 0, 8 do
+      command('norm zfjzo')
+    end
     -- 'statuscolumn' is not drawn for `virt_lines_leftcol` lines
     exec_lua([[
       vim.api.nvim_buf_set_extmark(0, ns, 6, 0, {
@@ -617,7 +734,7 @@ describe('statuscolumn', function()
                14 aaaaa                                    |
                                                            |
     ]])
-    command('set stc=')  -- also for the default fold column
+    command('set stc=') -- also for the default fold column
     screen:expect_unchanged()
     -- 'statuscolumn' is not too wide with custom (bogus) fold column
     command([[set stc=%{foldlevel(v:lnum)>0?repeat('-',foldlevel(v:lnum)):''}%=%l\ ]])
@@ -634,8 +751,7 @@ describe('statuscolumn', function()
       ---------8 aaaaa                                     |
       virt                                                 |
       ---------9 aaaaa                                     |
-      ~                                                    |
-      ~                                                    |
+      ~                                                    |*2
                                                            |
     ]])
   end)
@@ -650,11 +766,7 @@ describe('statuscolumn', function()
       [No Name] [+]                                        |
       :1set stc=%^l                                         |
       :2                                                   |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
+      ~                                                    |*5
       [Command Line]                                       |
       :                                                    |
     ]])
@@ -681,9 +793,7 @@ describe('statuscolumn', function()
     screen:expect([[
       aaaaa                                                |
       ^aaaaa                                                |
-      aaaaa                                                |
-      aaaaa                                                |
-      aaaaa                                                |
+      aaaaa                                                |*3
                                                            |
     ]])
     -- width correctly estimated with "w_nrwidth_line_count" when setting 'nu'
@@ -698,7 +808,7 @@ describe('statuscolumn', function()
     ]])
   end)
 
-  it("has correct width with custom sign column when (un)placing signs", function()
+  it('has correct width with custom sign column when (un)placing signs', function()
     screen:try_resize(screen._width, 3)
     exec_lua([[
       vim.cmd.norm('gg')
@@ -714,6 +824,8 @@ describe('statuscolumn', function()
         end
         return vim.v.lnum .. '%=' .. sign
       end
+      vim.o.number = true
+      vim.o.numberwidth = 2
       vim.o.statuscolumn = "%!v:lua.StatusCol()"
     ]])
     command('sign place 1 line=2 name=sign')
@@ -753,13 +865,13 @@ describe('statuscolumn', function()
       2 ssssaaaaa                                          |
                                                            |
     ]])
-    exec_lua("vim.api.nvim_buf_del_extmark(0, ns, id1)")
+    exec_lua('vim.api.nvim_buf_del_extmark(0, ns, id1)')
     screen:expect([[
       1   ^aaaaa                                            |
       2 ssaaaaa                                            |
                                                            |
     ]])
-    exec_lua("vim.api.nvim_buf_del_extmark(0, ns, id2)")
+    exec_lua('vim.api.nvim_buf_del_extmark(0, ns, id2)')
     screen:expect([[
       1 ^aaaaa                                              |
       2 aaaaa                                              |
@@ -775,7 +887,7 @@ describe('statuscolumn', function()
     ]])
   end)
 
-  it("is only evaluated twice, once to estimate and once to draw", function()
+  it('is only evaluated twice, once to estimate and once to draw', function()
     command([[
       let g:stcnr = 0
       func! Stc()

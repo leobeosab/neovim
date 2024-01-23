@@ -1,5 +1,4 @@
-#ifndef NVIM_API_UI_EVENTS_IN_H
-#define NVIM_API_UI_EVENTS_IN_H
+#pragma once
 
 // This file is not compiled, just parsed for definitions
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -40,6 +39,8 @@ void screenshot(String path)
   FUNC_API_SINCE(7);
 void option_set(String name, Object value)
   FUNC_API_SINCE(4);
+void chdir(String path)
+  FUNC_API_SINCE(12);
 // Stop event is not exported as such, represented by EOF in the msgpack stream.
 void stop(void)
   FUNC_API_NOEXPORT;
@@ -167,4 +168,6 @@ void msg_history_show(Array entries)
   FUNC_API_SINCE(6) FUNC_API_REMOTE_ONLY;
 void msg_history_clear(void)
   FUNC_API_SINCE(10) FUNC_API_REMOTE_ONLY;
-#endif  // NVIM_API_UI_EVENTS_IN_H
+
+void error_exit(Integer status)
+  FUNC_API_SINCE(12);

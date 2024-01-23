@@ -6,8 +6,8 @@ local exec = helpers.exec
 local exec_lua = helpers.exec_lua
 local expect_exit = helpers.expect_exit
 local feed = helpers.feed
-local funcs = helpers.funcs
-local meths = helpers.meths
+local fn = helpers.fn
+local api = helpers.api
 local read_file = helpers.read_file
 local source = helpers.source
 local eq = helpers.eq
@@ -23,7 +23,9 @@ end
 
 describe('Ex command', function()
   before_each(clear)
-  after_each(function() eq({}, meths.get_vvar('errors')) end)
+  after_each(function()
+    eq({}, api.nvim_get_vvar('errors'))
+  end)
 
   it('checks for address line overflow', function()
     if sizeoflong() < 8 then
@@ -47,10 +49,10 @@ describe(':confirm command dialog', function()
     clear()
     screen = Screen.new(75, 20)
     screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-      [1] = {bold = true, reverse = true},  -- StatusLine, MsgSeparator
-      [2] = {reverse = true},  -- StatusLineNC
-      [3] = {bold = true, foreground = Screen.colors.SeaGreen},  -- MoreMsg
+      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+      [1] = { bold = true, reverse = true }, -- StatusLine, MsgSeparator
+      [2] = { reverse = true }, -- StatusLineNC
+      [3] = { bold = true, foreground = Screen.colors.SeaGreen }, -- MoreMsg
     })
     screen:attach()
   end
@@ -74,21 +76,13 @@ describe(':confirm command dialog', function()
     feed(':confirm qall\n')
     screen:expect([[
       bar2                                                                       |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*5
       {2:Xbar [+]                                                                   }|
       foo2                                                                       |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*4
       {2:Xfoo [+]                                                                   }|
                                                                                  |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*2
       {1:                                                                           }|
       :confirm qall                                                              |
       {3:Save changes to "Xbar"?}                                                    |
@@ -112,21 +106,13 @@ describe(':confirm command dialog', function()
     feed(':confirm qall\n')
     screen:expect([[
       bar3                                                                       |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*5
       {2:Xbar [+]                                                                   }|
       foo3                                                                       |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*4
       {2:Xfoo [+]                                                                   }|
                                                                                  |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*2
       {1:                                                                           }|
       :confirm qall                                                              |
       {3:Save changes to "Xbar"?}                                                    |
@@ -150,21 +136,13 @@ describe(':confirm command dialog', function()
     feed(':confirm qall\n')
     screen:expect([[
       bar4                                                                       |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*5
       {2:Xbar [+]                                                                   }|
       foo4                                                                       |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*4
       {2:Xfoo [+]                                                                   }|
                                                                                  |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*2
       {1:                                                                           }|
       :confirm qall                                                              |
       {3:Save changes to "Xbar"?}                                                    |
@@ -173,17 +151,10 @@ describe(':confirm command dialog', function()
     feed('N')
     screen:expect([[
       bar4                                                                       |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*5
       {2:Xbar [+]                                                                   }|
       foo4                                                                       |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*4
       {2:Xfoo [+]                                                                   }|
                                                                                  |
       {1:                                                                           }|
@@ -215,9 +186,7 @@ describe(':confirm command dialog', function()
     feed(':confirm close\n')
     screen:expect([[
       abc                                                                        |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:[No Name] [+]                                                              }|
                                                                                  |
       {1:                                                                           }|
@@ -228,22 +197,17 @@ describe(':confirm command dialog', function()
     feed('C')
     screen:expect([[
       ^abc                                                                        |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:[No Name] [+]                                                              }|
                                                                                  |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*2
       {2:[No Name]                                                                  }|
                                                                                  |
     ]])
     feed(':confirm close\n')
     screen:expect([[
       abc                                                                        |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:[No Name] [+]                                                              }|
                                                                                  |
       {1:                                                                           }|
@@ -254,14 +218,7 @@ describe(':confirm command dialog', function()
     feed('N')
     screen:expect([[
       ^                                                                           |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*8
                                                                                  |
     ]])
   end)
@@ -280,9 +237,7 @@ describe(':confirm command dialog', function()
     feed(':confirm q\n')
     screen:expect([[
       foo                                                                        |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:                                                                           }|
       :confirm q                                                                 |
       {3:Save changes to "Untitled"?}                                                |
@@ -291,12 +246,7 @@ describe(':confirm command dialog', function()
     feed('C')
     screen:expect([[
       ^abc                                                                        |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*6
                                                                                  |
     ]])
 
@@ -304,9 +254,7 @@ describe(':confirm command dialog', function()
     feed(':confirm wq\n')
     screen:expect([[
       foo                                                                        |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:                                                                           }|
       "Xfoo" [noeol] 1L, 3B written                                              |
       {3:Save changes to "Untitled"?}                                                |
@@ -315,12 +263,7 @@ describe(':confirm command dialog', function()
     feed('C')
     screen:expect([[
       ^abc                                                                        |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*6
       "Xfoo" [noeol] 1L, 3B written                                              |
     ]])
 
@@ -343,8 +286,7 @@ describe(':confirm command dialog', function()
     feed(':set ro | confirm w\n')
     screen:expect([[
       foobar                                                                     |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*2
       {1:                                                                           }|
       :set ro | confirm w                                                        |
       {3:'readonly' option is set for "Xconfirm_write_ro".}                          |
@@ -354,11 +296,7 @@ describe(':confirm command dialog', function()
     feed('N')
     screen:expect([[
       fooba^r                                                                     |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*5
                                                                                  |
                                                                1,6           All |
     ]])
@@ -367,8 +305,7 @@ describe(':confirm command dialog', function()
     feed(':confirm w\n')
     screen:expect([[
       foobar                                                                     |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*2
       {1:                                                                           }|
       :confirm w                                                                 |
       {3:'readonly' option is set for "Xconfirm_write_ro".}                          |
@@ -400,10 +337,10 @@ describe(':confirm command dialog', function()
       ]])
     end
     eq('foobar\n', read_file('Xconfirm_write_ro'))
-    feed('<CR>')  -- suppress hit-enter prompt
+    feed('<CR>') -- suppress hit-enter prompt
 
     -- Try to write with read-only file permissions.
-    funcs.setfperm('Xconfirm_write_ro', 'r--r--r--')
+    fn.setfperm('Xconfirm_write_ro', 'r--r--r--')
     feed(':set noro | silent undo | confirm w\n')
     screen:expect([[
       foobar                                                                     |
@@ -440,7 +377,7 @@ describe(':confirm command dialog', function()
       ]])
     end
     eq('foo\n', read_file('Xconfirm_write_ro'))
-    feed('<CR>')  -- suppress hit-enter prompt
+    feed('<CR>') -- suppress hit-enter prompt
 
     os.remove('Xconfirm_write_ro')
   end)
@@ -473,8 +410,7 @@ describe(':confirm command dialog', function()
       b                                                                          |
       c                                                                          |
       d                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*2
                                                                                  |
                                                                1,1           All |
     ]])

@@ -23,21 +23,20 @@ after_each(function()
 end)
 
 describe('semantic token highlighting', function()
-
   local screen
   before_each(function()
     screen = Screen.new(40, 16)
     screen:attach()
     screen:set_default_attr_ids {
-      [1] = { bold = true, foreground = Screen.colors.Blue1 };
-      [2] = { foreground = Screen.colors.DarkCyan };
-      [3] = { foreground = Screen.colors.SlateBlue };
-      [4] = { bold = true, foreground = Screen.colors.SeaGreen };
-      [5] = { foreground = tonumber('0x6a0dad') };
-      [6] = { foreground = Screen.colors.Blue1 };
-      [7] = { bold = true, foreground = Screen.colors.DarkCyan };
-      [8] = { bold = true, foreground = Screen.colors.SlateBlue };
-      [9] = { bold = true, foreground = tonumber('0x6a0dad') };
+      [1] = { bold = true, foreground = Screen.colors.Blue1 },
+      [2] = { foreground = Screen.colors.DarkCyan },
+      [3] = { foreground = Screen.colors.SlateBlue },
+      [4] = { bold = true, foreground = Screen.colors.SeaGreen },
+      [5] = { foreground = tonumber('0x6a0dad') },
+      [6] = { foreground = Screen.colors.Blue1 },
+      [7] = { bold = true, foreground = Screen.colors.DarkCyan },
+      [8] = { bold = true, foreground = Screen.colors.SlateBlue },
+      [9] = { bold = true, foreground = tonumber('0x6a0dad') },
     }
     command([[ hi link @lsp.type.namespace Type ]])
     command([[ hi link @lsp.type.function Special ]])
@@ -81,7 +80,8 @@ describe('semantic token highlighting', function()
 
     before_each(function()
       exec_lua(create_server_definition)
-      exec_lua([[
+      exec_lua(
+        [[
         local legend, response, edit_response = ...
         server = _create_server({
           capabilities = {
@@ -99,19 +99,25 @@ describe('semantic token highlighting', function()
             end,
           }
         })
-      ]], legend, response, edit_response)
+      ]],
+        legend,
+        response,
+        edit_response
+      )
     end)
 
     it('buffer is highlighted when attached', function()
       exec_lua([[
         bufnr = vim.api.nvim_get_current_buf()
         vim.api.nvim_win_set_buf(0, bufnr)
+        vim.bo[bufnr].filetype = 'some-filetype'
         client_id = vim.lsp.start({ name = 'dummy', cmd = server.cmd })
       ]])
 
       insert(text)
 
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int {8:main}()                              |
@@ -124,11 +130,10 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]] }
+      ]],
+      }
     end)
 
     it('use LspTokenUpdate and highlight_token', function()
@@ -150,7 +155,8 @@ describe('semantic token highlighting', function()
 
       insert(text)
 
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int {9:main}()                              |
@@ -163,12 +169,10 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]] }
-
+      ]],
+      }
     end)
 
     it('buffer is unhighlighted when client is detached', function()
@@ -185,7 +189,8 @@ describe('semantic token highlighting', function()
         vim.lsp.buf_detach_client(bufnr, client_id)
       ]])
 
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int main()                              |
@@ -198,29 +203,30 @@ describe('semantic token highlighting', function()
         #endif                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]] }
+      ]],
+      }
     end)
 
-    it('buffer is highlighted and unhighlighted when semantic token highlighting is started and stopped'
-      , function()
-      exec_lua([[
+    it(
+      'buffer is highlighted and unhighlighted when semantic token highlighting is started and stopped',
+      function()
+        exec_lua([[
         bufnr = vim.api.nvim_get_current_buf()
         vim.api.nvim_win_set_buf(0, bufnr)
         client_id = vim.lsp.start({ name = 'dummy', cmd = server.cmd })
       ]])
 
-      insert(text)
+        insert(text)
 
-      exec_lua([[
+        exec_lua([[
         vim.notify = function() end
         vim.lsp.semantic_tokens.stop(bufnr, client_id)
       ]])
 
-      screen:expect { grid = [[
+        screen:expect {
+          grid = [[
         #include <iostream>                     |
                                                 |
         int main()                              |
@@ -233,17 +239,17 @@ describe('semantic token highlighting', function()
         #endif                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]] }
+      ]],
+        }
 
-      exec_lua([[
+        exec_lua([[
         vim.lsp.semantic_tokens.start(bufnr, client_id)
       ]])
 
-      screen:expect { grid = [[
+        screen:expect {
+          grid = [[
         #include <iostream>                     |
                                                 |
         int {8:main}()                              |
@@ -256,12 +262,12 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]] }
-    end)
+      ]],
+        }
+      end
+    )
 
     it('buffer is re-highlighted when force refreshed', function()
       exec_lua([[
@@ -272,7 +278,8 @@ describe('semantic token highlighting', function()
 
       insert(text)
 
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int {8:main}()                              |
@@ -285,17 +292,17 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]] }
+      ]],
+      }
 
       exec_lua([[
         vim.lsp.semantic_tokens.force_refresh(bufnr)
       ]])
 
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int {8:main}()                              |
@@ -308,11 +315,11 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]], unchanged = true }
+      ]],
+        unchanged = true,
+      }
 
       local messages = exec_lua('return server.messages')
       local token_request_count = 0
@@ -351,7 +358,8 @@ describe('semantic token highlighting', function()
       ]])
 
       insert(text)
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int {8:main}()                              |
@@ -364,14 +372,14 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]] }
+      ]],
+      }
       feed_command('%s/int x/int x()/')
       feed_command('noh')
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int {8:main}()                              |
@@ -382,13 +390,11 @@ describe('semantic token highlighting', function()
         {6:#else}                                   |
         {6:    printf("%d\n", x);}                  |
         {6:#endif}                                  |
-        }                                       |
-        }                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        }                                       |*2
+        {1:~                                       }|*3
         :noh                                    |
-      ]] }
+      ]],
+      }
     end)
 
     it('prevents starting semantic token highlighting with invalid conditions', function()
@@ -399,7 +405,7 @@ describe('semantic token highlighting', function()
         notifications = {}
         vim.notify = function(...) table.insert(notifications, 1, {...}) end
       ]])
-      eq(false, exec_lua("return vim.lsp.buf_is_attached(bufnr, client_id)"))
+      eq(false, exec_lua('return vim.lsp.buf_is_attached(bufnr, client_id)'))
 
       insert(text)
 
@@ -416,7 +422,8 @@ describe('semantic token highlighting', function()
       matches('%[LSP%] No client with id %d', notifications[1][1])
     end)
 
-    it('opt-out: does not activate semantic token highlighting if disabled in client attach',
+    it(
+      'opt-out: does not activate semantic token highlighting if disabled in client attach',
       function()
         exec_lua([[
           bufnr = vim.api.nvim_get_current_buf()
@@ -429,11 +436,12 @@ describe('semantic token highlighting', function()
             end),
           })
         ]])
-        eq(true, exec_lua("return vim.lsp.buf_is_attached(bufnr, client_id)"))
+        eq(true, exec_lua('return vim.lsp.buf_is_attached(bufnr, client_id)'))
 
         insert(text)
 
-        screen:expect { grid = [[
+        screen:expect {
+          grid = [[
           #include <iostream>                     |
                                                   |
           int main()                              |
@@ -446,11 +454,10 @@ describe('semantic token highlighting', function()
           #endif                                  |
           }                                       |
           ^}                                       |
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
+          {1:~                                       }|*3
                                                   |
-        ]] }
+        ]],
+        }
 
         local notifications = exec_lua([[
           local notifications = {}
@@ -460,7 +467,8 @@ describe('semantic token highlighting', function()
         ]])
         eq('[LSP] Server does not support semantic tokens', notifications[1][1])
 
-        screen:expect { grid = [[
+        screen:expect {
+          grid = [[
           #include <iostream>                     |
                                                   |
           int main()                              |
@@ -473,14 +481,15 @@ describe('semantic token highlighting', function()
           #endif                                  |
           }                                       |
           ^}                                       |
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
+          {1:~                                       }|*3
                                                   |
-          ]], unchanged = true }
-      end)
+          ]],
+          unchanged = true,
+        }
+      end
+    )
 
-  it('ignores null responses from the server', function()
+    it('ignores null responses from the server', function()
       exec_lua([[
         local legend, response, edit_response = ...
         server2 = _create_server({
@@ -502,11 +511,12 @@ describe('semantic token highlighting', function()
         vim.api.nvim_win_set_buf(0, bufnr)
         client_id = vim.lsp.start({ name = 'dummy', cmd = server2.cmd })
       ]])
-      eq(true, exec_lua("return vim.lsp.buf_is_attached(bufnr, client_id)"))
+      eq(true, exec_lua('return vim.lsp.buf_is_attached(bufnr, client_id)'))
 
       insert(text)
 
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int main()                              |
@@ -519,15 +529,15 @@ describe('semantic token highlighting', function()
         #endif                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]] }
+      ]],
+      }
     end)
 
     it('does not send delta requests if not supported by server', function()
-      exec_lua([[
+      exec_lua(
+        [[
         local legend, response, edit_response = ...
         server2 = _create_server({
           capabilities = {
@@ -548,10 +558,15 @@ describe('semantic token highlighting', function()
         bufnr = vim.api.nvim_get_current_buf()
         vim.api.nvim_win_set_buf(0, bufnr)
         client_id = vim.lsp.start({ name = 'dummy', cmd = server2.cmd })
-      ]], legend, response, edit_response)
+      ]],
+        legend,
+        response,
+        edit_response
+      )
 
       insert(text)
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int {8:main}()                              |
@@ -564,18 +579,18 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
-      ]] }
+      ]],
+      }
       feed_command('%s/int x/int x()/')
       feed_command('noh')
 
       -- the highlights don't change because our fake server sent the exact
       -- same result for the same method (the full request). "x" would have
       -- changed to highlight index 3 had we sent a delta request
-      screen:expect { grid = [[
+      screen:expect {
+        grid = [[
         #include <iostream>                     |
                                                 |
         int {8:main}()                              |
@@ -586,13 +601,11 @@ describe('semantic token highlighting', function()
         {6:#else}                                   |
         {6:    printf("%d\n", x);}                  |
         {6:#endif}                                  |
-        }                                       |
-        }                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        }                                       |*2
+        {1:~                                       }|*3
         :noh                                    |
-      ]] }
+      ]],
+      }
       local messages = exec_lua('return server2.messages')
       local token_request_count = 0
       for _, message in ipairs(messages) do
@@ -630,24 +643,13 @@ describe('semantic token highlighting', function()
           },
         },
         expected_screen = function()
-          screen:expect{grid=[[
+          screen:expect {
+            grid = [[
             char* {7:foo} = "\n"^;                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*14
                                                     |
-          ]]}
+          ]],
+          }
         end,
       },
       {
@@ -762,7 +764,8 @@ int main()
           },
         },
         expected_screen = function()
-          screen:expect{grid=[[
+          screen:expect {
+            grid = [[
             #include <iostream>                     |
             int {8:main}()                              |
             {                                       |
@@ -773,13 +776,10 @@ int main()
             {6:    comment}                             |
             {6:  #endif}                                |
             ^}                                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*5
                                                     |
-          ]]}
+          ]],
+          }
         end,
       },
       {
@@ -823,24 +823,15 @@ b = "as"]],
           },
         },
         expected_screen = function()
-          screen:expect{grid=[[
+          screen:expect {
+            grid = [[
             {6:-- comment}                              |
             local {7:a} = 1                             |
             {2:b} = "as^"                                |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*12
                                                     |
-          ]]}
+          ]],
+          }
         end,
       },
       {
@@ -953,30 +944,24 @@ b = "as"]],
           },
         },
         expected_screen = function()
-          screen:expect{grid=[[
+          screen:expect {
+            grid = [[
             pub fn {8:main}() {                         |
               break rust;                           |
               //{6:/ what?}                             |
             }                                       |
             ^                                        |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*10
                                                     |
-          ]]}
+          ]],
+          }
         end,
       },
     }) do
       it(test.it, function()
         exec_lua(create_server_definition)
-        exec_lua([[
+        exec_lua(
+          [[
           local legend, resp = ...
           server = _create_server({
             capabilities = {
@@ -994,7 +979,10 @@ b = "as"]],
           bufnr = vim.api.nvim_get_current_buf()
           vim.api.nvim_win_set_buf(0, bufnr)
           client_id = vim.lsp.start({ name = 'dummy', cmd = server.cmd })
-        ]], test.legend, test.response)
+        ]],
+          test.legend,
+          test.response
+        )
 
         insert(test.text)
 
@@ -1036,7 +1024,7 @@ b = "as"]],
             end_col = 9,
             type = 'variable',
             marked = true,
-          }
+          },
         },
         expected2 = {
           {
@@ -1049,47 +1037,26 @@ b = "as"]],
             end_col = 9,
             type = 'variable',
             marked = true,
-          }
+          },
         },
         expected_screen1 = function()
-        screen:expect{grid=[[
+          screen:expect {
+            grid = [[
           char* {7:foo} = "\n"^;                       |
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
+          {1:~                                       }|*14
                                                   |
-        ]]}
+        ]],
+          }
         end,
         expected_screen2 = function()
-          screen:expect{grid=[[
+          screen:expect {
+            grid = [[
             ^                                        |
             char* {7:foo} = "\n";                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*13
                                                     |
-          ]]}
+          ]],
+          }
         end,
       },
       {
@@ -1206,7 +1173,7 @@ int main()
             modifiers = {},
             type = 'comment',
             marked = true,
-          }
+          },
         },
         expected2 = {
           {
@@ -1288,10 +1255,11 @@ int main()
             modifiers = {},
             type = 'comment',
             marked = true,
-          }
+          },
         },
         expected_screen1 = function()
-          screen:expect{grid=[[
+          screen:expect {
+            grid = [[
             #include <iostream>                     |
                                                     |
             int {8:main}()                              |
@@ -1303,15 +1271,14 @@ int main()
             {6:    printf("%d\n", x);}                  |
             {6:#endif}                                  |
             ^}                                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*4
                                                     |
-          ]]}
+          ]],
+          }
         end,
         expected_screen2 = function()
-          screen:expect{grid=[[
+          screen:expect {
+            grid = [[
             #include <iostream>                     |
                                                     |
             int {8:main}()                              |
@@ -1324,11 +1291,10 @@ int main()
             {6:    printf("%d\n", x);}                  |
             {6:^#endif}                                  |
             }                                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*3
                                                     |
-          ]]}
+          ]],
+          }
         end,
       },
       {
@@ -1355,55 +1321,33 @@ int main()
             end_col = 6,
             type = 'variable',
             marked = true,
-          }
+          },
         },
-        expected2 = {
-        },
+        expected2 = {},
         expected_screen1 = function()
-          screen:expect{grid=[[
+          screen:expect {
+            grid = [[
             {7:string} = "test^"                         |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*14
                                                     |
-          ]]}
+          ]],
+          }
         end,
         expected_screen2 = function()
-          screen:expect{grid=[[
+          screen:expect {
+            grid = [[
             ^                                        |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*14
                                                     |
-          ]]}
+          ]],
+          }
         end,
       },
     }) do
       it(test.it, function()
         exec_lua(create_server_definition)
-        exec_lua([[
+        exec_lua(
+          [[
           local legend, resp1, resp2 = ...
           server = _create_server({
             capabilities = {
@@ -1431,7 +1375,11 @@ int main()
             semantic_tokens.stop(bufnr, client_id)
             semantic_tokens.start(bufnr, client_id, { debounce = 10 })
           end)
-        ]], test.legend, test.response1, test.response2)
+        ]],
+          test.legend,
+          test.response1,
+          test.response2
+        )
 
         insert(test.text1)
 
@@ -1446,11 +1394,14 @@ int main()
         if test.edit then
           feed(test.edit)
         else
-          exec_lua([[
+          exec_lua(
+            [[
             local text = ...
             vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, vim.fn.split(text, "\n"))
             vim.wait(15) -- wait for debounce
-          ]], test.text2)
+          ]],
+            test.text2
+          )
         end
 
         test.expected_screen2()

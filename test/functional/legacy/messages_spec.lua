@@ -4,8 +4,9 @@ local clear = helpers.clear
 local command = helpers.command
 local exec = helpers.exec
 local feed = helpers.feed
-local meths = helpers.meths
+local api = helpers.api
 local nvim_dir = helpers.nvim_dir
+local assert_alive = helpers.assert_alive
 
 before_each(clear)
 
@@ -16,10 +17,10 @@ describe('messages', function()
   it('a warning causes scrolling if and only if it has a stacktrace', function()
     screen = Screen.new(75, 6)
     screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-      [1] = {bold = true, foreground = Screen.colors.SeaGreen},  -- MoreMsg
-      [2] = {bold = true, reverse = true},  -- MsgSeparator
-      [3] = {foreground = Screen.colors.Red},  -- WarningMsg
+      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+      [1] = { bold = true, foreground = Screen.colors.SeaGreen }, -- MoreMsg
+      [2] = { bold = true, reverse = true }, -- MsgSeparator
+      [3] = { foreground = Screen.colors.Red }, -- WarningMsg
     })
     screen:attach()
 
@@ -31,20 +32,17 @@ describe('messages', function()
     command('enew')
     command('set readonly')
     feed('u')
-    screen:expect({grid = [[
+    screen:expect({
+      grid = [[
                                                                                  |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*4
       {3:W10: Warning: Changing a readonly file}^                                     |
-    ]], timeout = 500})
+    ]],
+      timeout = 500,
+    })
     screen:expect([[
       ^                                                                           |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*4
       Already at oldest change                                                   |
     ]])
   end)
@@ -53,8 +51,8 @@ describe('messages', function()
   it('clearing mode does not remove message', function()
     screen = Screen.new(60, 10)
     screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-      [1] = {background = Screen.colors.Red, foreground = Screen.colors.White},  -- ErrorMsg
+      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+      [1] = { background = Screen.colors.Red, foreground = Screen.colors.White }, -- ErrorMsg
     })
     screen:attach()
     exec([[
@@ -73,12 +71,7 @@ describe('messages', function()
       ^one                                                         |
       NoSuchFile                                                  |
       three                                                       |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*6
       from DebugSilent normal                                     |
     ]])
 
@@ -88,12 +81,7 @@ describe('messages', function()
       ^one                                                         |
       NoSuchFile                                                  |
       three                                                       |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*6
       from DebugSilent visual                                     |
     ]])
 
@@ -104,11 +92,7 @@ describe('messages', function()
       one                                                         |
       NoSuchFil^e                                                  |
       three                                                       |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*5
       from DebugSilent visual                                     |
       {1:E447: Can't find file "NoSuchFile" in path}                  |
     ]])
@@ -123,8 +107,8 @@ describe('messages', function()
     it('works', function()
       screen = Screen.new(75, 6)
       screen:set_default_attr_ids({
-        [1] = {bold = true, foreground = Screen.colors.SeaGreen},  -- MoreMsg
-        [2] = {foreground = Screen.colors.Brown},  -- LineNr
+        [1] = { bold = true, foreground = Screen.colors.SeaGreen }, -- MoreMsg
+        [2] = { foreground = Screen.colors.Brown }, -- LineNr
       })
       screen:attach()
 
@@ -420,15 +404,15 @@ describe('messages', function()
     it('verbose message before echo command', function()
       screen = Screen.new(60, 10)
       screen:set_default_attr_ids({
-        [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-        [1] = {bold = true, foreground = Screen.colors.SeaGreen},  -- MoreMsg
+        [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+        [1] = { bold = true, foreground = Screen.colors.SeaGreen }, -- MoreMsg
       })
       screen:attach()
 
-      command('cd '..nvim_dir)
-      meths.set_option_value('shell', './shell-test', {})
-      meths.set_option_value('shellcmdflag', 'REP 20', {})
-      meths.set_option_value('shellxquote', '', {})  -- win: avoid extra quotes
+      command('cd ' .. nvim_dir)
+      api.nvim_set_option_value('shell', './shell-test', {})
+      api.nvim_set_option_value('shellcmdflag', 'REP 20', {})
+      api.nvim_set_option_value('shellxquote', '', {}) -- win: avoid extra quotes
 
       -- display a page and go back, results in exactly the same view
       feed([[:4 verbose echo system('foo')<CR>]])
@@ -474,18 +458,11 @@ describe('messages', function()
       -- do the same with 'cmdheight' set to 2
       feed('q')
       command('set ch=2')
-      command('mode')  -- FIXME: bottom is invalid after scrolling
+      command('mode') -- FIXME: bottom is invalid after scrolling
       screen:expect([[
         ^                                                            |
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-                                                                    |
-                                                                    |
+        {0:~                                                           }|*7
+                                                                    |*2
       ]])
       feed([[:4 verbose echo system('foo')<CR>]])
       screen:expect([[
@@ -532,9 +509,9 @@ describe('messages', function()
     it('with control characters can be quit vim-patch:8.2.1844', function()
       screen = Screen.new(40, 10)
       screen:set_default_attr_ids({
-        [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-        [1] = {bold = true, foreground = Screen.colors.SeaGreen},  -- MoreMsg
-        [2] = {foreground = Screen.colors.Blue},  -- SpecialKey
+        [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+        [1] = { bold = true, foreground = Screen.colors.SeaGreen }, -- MoreMsg
+        [2] = { foreground = Screen.colors.Blue }, -- SpecialKey
       })
       screen:attach()
 
@@ -554,14 +531,7 @@ describe('messages', function()
       feed('q')
       screen:expect([[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*8
                                                 |
       ]])
     end)
@@ -571,9 +541,9 @@ describe('messages', function()
     before_each(function()
       screen = Screen.new(40, 6)
       screen:set_default_attr_ids({
-        [1] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-        [2] = {bold = true},  -- ModeMsg
-        [3] = {bold = true, reverse=true},  -- StatusLine
+        [1] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+        [2] = { bold = true }, -- ModeMsg
+        [3] = { bold = true, reverse = true }, -- StatusLine
       })
       screen:attach()
     end)
@@ -590,18 +560,14 @@ describe('messages', function()
       feed('i')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
         {3:                                        }|
         {2:-- INSERT --}                            |
       ]])
       feed('<C-C>')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
         {3:                                        }|
                                                 |
       ]])
@@ -616,18 +582,14 @@ describe('messages', function()
       feed('i')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
         {3:[No Name]                               }|
         {2:-- INSERT --}                            |
       ]])
       feed('<Esc>')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
         {3:[No Name]                               }|
                                                 |
       ]])
@@ -638,19 +600,13 @@ describe('messages', function()
       feed('i<C-O>')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*4
         {2:-- (insert) --}                          |
       ]])
       feed('<C-C>')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*4
                                                 |
       ]])
     end)
@@ -660,9 +616,9 @@ describe('messages', function()
   it('y/n prompt works', function()
     screen = Screen.new(75, 6)
     screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-      [1] = {bold = true, foreground = Screen.colors.SeaGreen},  -- MoreMsg
-      [2] = {bold = true, reverse = true},  -- MsgSeparator
+      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+      [1] = { bold = true, foreground = Screen.colors.SeaGreen }, -- MoreMsg
+      [2] = { bold = true, reverse = true }, -- MsgSeparator
     })
     screen:attach()
     command('set noincsearch nohlsearch inccommand=')
@@ -672,18 +628,14 @@ describe('messages', function()
     screen:expect([[
       1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}^                                   |
     ]])
     feed('n')
     screen:expect([[
       ^1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}n                                  |
     ]])
 
@@ -691,18 +643,14 @@ describe('messages', function()
     screen:expect([[
       1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}^                                   |
     ]])
     feed('<Esc>')
     screen:expect([[
       ^1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}n                                  |
     ]])
 
@@ -710,29 +658,62 @@ describe('messages', function()
     screen:expect([[
       1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}^                                   |
     ]])
     feed('y')
     screen:expect([[
       y1                                                                         |
       ^y2                                                                         |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}y                                  |
     ]])
+  end)
+
+  -- oldtest: Test_fileinfo_tabpage_cmdheight()
+  it("fileinfo works when 'cmdheight' has just decreased", function()
+    screen = Screen.new(40, 6)
+    screen:set_default_attr_ids({
+      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+      [1] = { bold = true }, -- TabLineSel
+      [2] = { underline = true, background = Screen.colors.LightGrey }, -- TabLine
+      [3] = { reverse = true }, -- TabLineFill
+    })
+    screen:attach()
+
+    exec([[
+      set shortmess-=o
+      set shortmess-=O
+      set shortmess-=F
+      tabnew
+      set cmdheight=2
+    ]])
+    command('mode') -- FIXME: bottom is invalid after scrolling
+    screen:expect([[
+      {2: [No Name] }{1: [No Name] }{3:                 }{2:X}|
+      ^                                        |
+      {0:~                                       }|*2
+                                              |*2
+    ]])
+
+    feed(':tabprev | edit Xfileinfo.txt<CR>')
+    screen:expect([[
+      {1: Xfileinfo.txt }{2: [No Name] }{3:             }{2:X}|
+      ^                                        |
+      {0:~                                       }|*3
+      "Xfileinfo.txt" [New]                   |
+    ]])
+    assert_alive()
   end)
 
   -- oldtest: Test_fileinfo_after_echo()
   it('fileinfo does not overwrite echo message vim-patch:8.2.4156', function()
     screen = Screen.new(40, 6)
     screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
+      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
     })
     screen:attach()
+
     exec([[
       set shortmess-=F
 
@@ -746,14 +727,12 @@ describe('messages', function()
 
       autocmd CursorHold * buf b.txt | w | echo "'b' written"
     ]])
+
     command('set updatetime=50')
     feed('0$')
     screen:expect([[
       ^hi                                      |
-      {0:~                                       }|
-      {0:~                                       }|
-      {0:~                                       }|
-      {0:~                                       }|
+      {0:~                                       }|*4
       'b' written                             |
     ]])
     os.remove('b.txt')

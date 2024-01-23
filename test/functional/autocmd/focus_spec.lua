@@ -1,12 +1,12 @@
 local helpers = require('test.functional.helpers')(after_each)
 local thelpers = require('test.functional.terminal.helpers')
-local luv = require('luv')
 local clear = helpers.clear
-local nvim_prog = helpers.nvim_prog
 local feed_command = helpers.feed_command
 local feed_data = thelpers.feed_data
 
-if helpers.skip(helpers.is_os('win')) then return end
+if helpers.skip(helpers.is_os('win')) then
+  return
+end
 
 describe('autoread TUI FocusGained/FocusLost', function()
   local f1 = 'xtest-foo'
@@ -14,8 +14,16 @@ describe('autoread TUI FocusGained/FocusLost', function()
 
   before_each(function()
     clear()
-    screen = thelpers.screen_setup(0, '["'..nvim_prog
-      ..'", "-u", "NONE", "-i", "NONE", "--cmd", "set noswapfile noshowcmd noruler"]')
+    screen = thelpers.setup_child_nvim({
+      '-u',
+      'NONE',
+      '-i',
+      'NONE',
+      '--cmd',
+      'colorscheme vim',
+      '--cmd',
+      'set noswapfile noshowcmd noruler notermguicolors',
+    })
   end)
 
   teardown(function()
@@ -33,44 +41,46 @@ describe('autoread TUI FocusGained/FocusLost', function()
 
     helpers.write_file(path, '')
     local atime = os.time() - 10
-    luv.fs_utime(path, atime, atime)
+    vim.uv.fs_utime(path, atime, atime)
 
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
       {1: }                                                 |
-      {4:~                                                 }|
-      {4:~                                                 }|
-      {4:~                                                 }|
+      {4:~                                                 }|*3
       {5:[No Name]                                         }|
                                                         |
       {3:-- TERMINAL --}                                    |
-    ]]}
-    feed_command('edit '..path)
-    screen:expect{grid=[[
+    ]],
+    }
+    feed_command('edit ' .. path)
+    screen:expect {
+      grid = [[
       {1: }                                                 |
-      {4:~                                                 }|
-      {4:~                                                 }|
-      {4:~                                                 }|
+      {4:~                                                 }|*3
       {5:xtest-foo                                         }|
       :edit xtest-foo                                   |
       {3:-- TERMINAL --}                                    |
-    ]]}
+    ]],
+    }
     feed_data('\027[O')
     feed_data('\027[O')
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
       {1: }                                                 |
-      {4:~                                                 }|
-      {4:~                                                 }|
-      {4:~                                                 }|
+      {4:~                                                 }|*3
       {5:xtest-foo                                         }|
       :edit xtest-foo                                   |
       {3:-- TERMINAL --}                                    |
-    ]], unchanged=true}
+    ]],
+      unchanged = true,
+    }
 
     helpers.write_file(path, expected_addition)
 
     feed_data('\027[I')
 
-    screen:expect{grid=[[
+    screen:expect {
+      grid = [[
       {1:l}ine 1                                            |
       line 2                                            |
       line 3                                            |
@@ -78,6 +88,7 @@ describe('autoread TUI FocusGained/FocusLost', function()
       {5:xtest-foo                                         }|
       "xtest-foo" 4L, 28B                               |
       {3:-- TERMINAL --}                                    |
-    ]]}
+    ]],
+    }
   end)
 end)

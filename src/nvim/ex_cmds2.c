@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file ex_cmds2.c
 ///
 /// Some more functions for command line commands
@@ -12,9 +9,11 @@
 #include <string.h>
 
 #include "nvim/arglist.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
+#include "nvim/autocmd_defs.h"
 #include "nvim/buffer.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/bufwrite.h"
 #include "nvim/change.h"
 #include "nvim/channel.h"
@@ -28,25 +27,25 @@
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_getln.h"
 #include "nvim/fileio.h"
-#include "nvim/gettext.h"
+#include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
+#include "nvim/highlight.h"
 #include "nvim/highlight_defs.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/mark.h"
-#include "nvim/memline_defs.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/move.h"
 #include "nvim/normal.h"
-#include "nvim/option.h"
-#include "nvim/optionstr.h"
+#include "nvim/option_vars.h"
 #include "nvim/os/os_defs.h"
 #include "nvim/path.h"
-#include "nvim/pos.h"
+#include "nvim/pos_defs.h"
 #include "nvim/quickfix.h"
 #include "nvim/runtime.h"
+#include "nvim/types_defs.h"
 #include "nvim/undo.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 #include "nvim/window.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -105,9 +104,8 @@ void ex_perldo(exarg_T *eap)
 /// Careful: autocommands may make "buf" invalid!
 ///
 /// @return FAIL for failure, OK otherwise
-int autowrite(buf_T *buf, int forceit)
+int autowrite(buf_T *buf, bool forceit)
 {
-  int r;
   bufref_T bufref;
 
   if (!(p_aw || p_awa) || !p_write
@@ -117,7 +115,7 @@ int autowrite(buf_T *buf, int forceit)
     return FAIL;
   }
   set_bufref(&bufref, buf);
-  r = buf_write_all(buf, forceit);
+  int r = buf_write_all(buf, forceit);
 
   // Writing may succeed but the buffer still changed, e.g., when there is a
   // conversion error.  We do want to return FAIL then.
@@ -138,7 +136,7 @@ void autowrite_all(void)
     if (bufIsChanged(buf) && !buf->b_p_ro && !bt_dontwrite(buf)) {
       bufref_T bufref;
       set_bufref(&bufref, buf);
-      (void)buf_write_all(buf, false);
+      buf_write_all(buf, false);
       // an autocommand may have deleted the buffer
       if (!bufref_valid(&bufref)) {
         buf = firstbuf;
@@ -151,7 +149,7 @@ void autowrite_all(void)
 /// For flags use the CCGD_ values.
 bool check_changed(buf_T *buf, int flags)
 {
-  int forceit = (flags & CCGD_FORCEIT);
+  bool forceit = (flags & CCGD_FORCEIT);
   bufref_T bufref;
   set_bufref(&bufref, buf);
 
@@ -217,7 +215,7 @@ void dialog_changed(buf_T *buf, bool checkall)
     if (buf->b_fname != NULL
         && check_overwrite(&ea, buf, buf->b_fname, buf->b_ffname, false) == OK) {
       // didn't hit Cancel
-      (void)buf_write_all(buf, false);
+      buf_write_all(buf, false);
     }
   } else if (ret == VIM_NO) {
     unchanged(buf, true, false);
@@ -233,7 +231,7 @@ void dialog_changed(buf_T *buf, bool checkall)
         if (buf2->b_fname != NULL
             && check_overwrite(&ea, buf2, buf2->b_fname, buf2->b_ffname, false) == OK) {
           // didn't hit Cancel
-          (void)buf_write_all(buf2, false);
+          buf_write_all(buf2, false);
         }
         // an autocommand may have deleted the buffer
         if (!bufref_valid(&bufref)) {
@@ -267,7 +265,7 @@ bool dialog_close_terminal(buf_T *buf)
 
 /// @return true if the buffer "buf" can be abandoned, either by making it
 /// hidden, autowriting it or unloading it.
-bool can_abandon(buf_T *buf, int forceit)
+bool can_abandon(buf_T *buf, bool forceit)
 {
   return buf_hide(buf)
          || !bufIsChanged(buf)
@@ -279,9 +277,7 @@ bool can_abandon(buf_T *buf, int forceit)
 /// Add a buffer number to "bufnrs", unless it's already there.
 static void add_bufnum(int *bufnrs, int *bufnump, int nr)
 {
-  int i;
-
-  for (i = 0; i < *bufnump; i++) {
+  for (int i = 0; i < *bufnump; i++) {
     if (bufnrs[i] == nr) {
       return;
     }
@@ -302,11 +298,9 @@ static void add_bufnum(int *bufnrs, int *bufnump, int nr)
 bool check_changed_any(bool hidden, bool unload)
 {
   bool ret = false;
-  int save;
   int i;
   int bufnum = 0;
   size_t bufcount = 0;
-  int *bufnrs;
 
   // Make a list of all buffers, with the most important ones first.
   FOR_ALL_BUFFERS(buf) {
@@ -317,7 +311,7 @@ bool check_changed_any(bool hidden, bool unload)
     return false;
   }
 
-  bufnrs = xmalloc(sizeof(*bufnrs) * bufcount);
+  int *bufnrs = xmalloc(sizeof(*bufnrs) * bufcount);
 
   // curbuf
   bufnrs[bufnum++] = curbuf->b_fnum;
@@ -385,7 +379,7 @@ bool check_changed_any(bool hidden, bool unload)
         ? semsg(_("E947: Job still running in buffer \"%s\""), buf->b_fname)
         : semsg(_("E162: No write since last change for buffer \"%s\""),
                 buf_spname(buf) != NULL ? buf_spname(buf) : buf->b_fname)) {
-      save = no_wait_return;
+      int save = no_wait_return;
       no_wait_return = false;
       wait_return(false);
       no_wait_return = save;
@@ -433,17 +427,16 @@ int check_fname(void)
 /// Flush the contents of a buffer, unless it has no file name.
 ///
 /// @return  FAIL for failure, OK otherwise
-int buf_write_all(buf_T *buf, int forceit)
+int buf_write_all(buf_T *buf, bool forceit)
 {
-  int retval;
   buf_T *old_curbuf = curbuf;
 
-  retval = (buf_write(buf, buf->b_ffname, buf->b_fname,
-                      (linenr_T)1, buf->b_ml.ml_line_count, NULL,
-                      false, forceit, true, false));
+  int retval = (buf_write(buf, buf->b_ffname, buf->b_fname,
+                          1, buf->b_ml.ml_line_count, NULL,
+                          false, forceit, true, false));
   if (curbuf != old_curbuf) {
     msg_source(HL_ATTR(HLF_W));
-    msg(_("Warning: Entered other buffer unexpectedly (check autocommands)"));
+    msg(_("Warning: Entered other buffer unexpectedly (check autocommands)"), 0);
   }
   return retval;
 }
@@ -451,9 +444,11 @@ int buf_write_all(buf_T *buf, int forceit)
 /// ":argdo", ":windo", ":bufdo", ":tabdo", ":cdo", ":ldo", ":cfdo" and ":lfdo"
 void ex_listdo(exarg_T *eap)
 {
-  win_T *wp;
-  tabpage_T *tp;
   char *save_ei = NULL;
+
+  // Temporarily override SHM_OVER and SHM_OVERALL to avoid that file
+  // message overwrites output from the command.
+  msg_listdo_overwrite++;
 
   if (eap->cmdidx != CMD_windo && eap->cmdidx != CMD_tabdo) {
     // Don't do syntax HL autocommands.  Skipping the syntax file is a
@@ -474,8 +469,8 @@ void ex_listdo(exarg_T *eap)
     int next_fnum = 0;
     int i = 0;
     // start at the eap->line1 argument/window/buffer
-    wp = firstwin;
-    tp = first_tabpage;
+    win_T *wp = firstwin;
+    tabpage_T *tp = first_tabpage;
     switch (eap->cmdidx) {
     case CMD_windo:
       for (; wp != NULL && i + 1 < eap->line1; wp = wp->w_next) {
@@ -518,9 +513,7 @@ void ex_listdo(exarg_T *eap)
       if (qf_size == 0 || (size_t)eap->line1 > qf_size) {
         buf = NULL;
       } else {
-        save_clear_shm_value();
         ex_cc(eap);
-        restore_shm_value();
 
         buf = curbuf;
         i = (int)eap->line1 - 1;
@@ -547,9 +540,7 @@ void ex_listdo(exarg_T *eap)
         if (curwin->w_arg_idx != i || !editing_arg_idx(curwin)) {
           // Clear 'shm' to avoid that the file message overwrites
           // any output from the command.
-          save_clear_shm_value();
           do_argfile(eap, i);
-          restore_shm_value();
         }
         if (curwin->w_arg_idx != i) {
           break;
@@ -612,11 +603,8 @@ void ex_listdo(exarg_T *eap)
           break;
         }
 
-        // Go to the next buffer.  Clear 'shm' to avoid that the file
-        // message overwrites any output from the command.
-        save_clear_shm_value();
+        // Go to the next buffer.
         goto_buffer(eap, DOBUF_FIRST, FORWARD, next_fnum);
-        restore_shm_value();
 
         // If autocommands took us elsewhere, quit here.
         if (curbuf->b_fnum != next_fnum) {
@@ -633,11 +621,7 @@ void ex_listdo(exarg_T *eap)
 
         size_t qf_idx = qf_get_cur_idx(eap);
 
-        // Clear 'shm' to avoid that the file message overwrites
-        // any output from the command.
-        save_clear_shm_value();
         ex_cnext(eap);
-        restore_shm_value();
 
         // If jumping to the next quickfix entry fails, quit here.
         if (qf_get_cur_idx(eap) == qf_idx) {
@@ -664,6 +648,7 @@ void ex_listdo(exarg_T *eap)
     listcmd_busy = false;
   }
 
+  msg_listdo_overwrite--;
   if (save_ei != NULL) {
     buf_T *bnext;
     aco_save_T aco;
@@ -696,9 +681,7 @@ void ex_listdo(exarg_T *eap)
 /// ":compiler[!] {name}"
 void ex_compiler(exarg_T *eap)
 {
-  char *buf;
   char *old_cur_comp = NULL;
-  char *p;
 
   if (*eap->arg == NUL) {
     // List all compiler scripts.
@@ -708,7 +691,7 @@ void ex_compiler(exarg_T *eap)
   }
 
   size_t bufsize = strlen(eap->arg) + 14;
-  buf = xmalloc(bufsize);
+  char *buf = xmalloc(bufsize);
 
   if (eap->forceit) {
     // ":compiler! {name}" sets global options
@@ -738,7 +721,7 @@ void ex_compiler(exarg_T *eap)
   do_cmdline_cmd(":delcommand CompilerSet");
 
   // Set "b:current_compiler" from "current_compiler".
-  p = get_var_value("g:current_compiler");
+  char *p = get_var_value("g:current_compiler");
   if (p != NULL) {
     set_internal_string_var("b:current_compiler", p);
   }
@@ -765,7 +748,7 @@ void ex_checktime(exarg_T *eap)
   } else {
     buf_T *buf = buflist_findnr((int)eap->line2);
     if (buf != NULL) {           // cannot happen?
-      (void)buf_check_timestamp(buf);
+      buf_check_timestamp(buf);
     }
   }
   no_check_timestamps = save_no_check_timestamps;
@@ -784,7 +767,7 @@ static void script_host_execute(char *name, exarg_T *eap)
     tv_list_append_number(args, (int)eap->line1);
     tv_list_append_number(args, (int)eap->line2);
 
-    (void)eval_call_provider(name, "execute", args, true);
+    eval_call_provider(name, "execute", args, true);
   }
 }
 
@@ -800,7 +783,7 @@ static void script_host_execute_file(char *name, exarg_T *eap)
     // current range
     tv_list_append_number(args, (int)eap->line1);
     tv_list_append_number(args, (int)eap->line2);
-    (void)eval_call_provider(name, "execute_file", args, true);
+    eval_call_provider(name, "execute_file", args, true);
   }
 }
 
@@ -811,7 +794,7 @@ static void script_host_do_range(char *name, exarg_T *eap)
     tv_list_append_number(args, (int)eap->line1);
     tv_list_append_number(args, (int)eap->line2);
     tv_list_append_string(args, eap->arg, -1);
-    (void)eval_call_provider(name, "do_range", args, true);
+    eval_call_provider(name, "do_range", args, true);
   }
 }
 
@@ -821,7 +804,6 @@ static void script_host_do_range(char *name, exarg_T *eap)
 void ex_drop(exarg_T *eap)
 {
   bool split = false;
-  buf_T *buf;
 
   // Check if the first argument is already being edited in a window.  If
   // so, jump to that window.
@@ -849,7 +831,7 @@ void ex_drop(exarg_T *eap)
   // ":drop file ...": Edit the first argument.  Jump to an existing
   // window if possible, edit in current window if the current buffer
   // can be abandoned, otherwise open a new window.
-  buf = buflist_findnr(ARGLIST[0].ae_fnum);
+  buf_T *buf = buflist_findnr(ARGLIST[0].ae_fnum);
 
   FOR_ALL_TAB_WINDOWS(tp, wp) {
     if (wp->w_buffer == buf) {

@@ -2,6 +2,7 @@ local api = vim.api
 local validate = vim.validate
 local util = require('vim.lsp.util')
 local npcall = vim.F.npcall
+local ms = require('vim.lsp.protocol').Methods
 
 local M = {}
 
@@ -33,7 +34,7 @@ end
 ---@return boolean if server responds.
 ---@deprecated
 function M.server_ready()
-  vim.deprecate('vim.lsp.buf.server_ready', nil, '0.10.0')
+  vim.deprecate('vim.lsp.buf.server_ready()', nil, '0.10')
   return not not vim.lsp.buf_notify(0, 'window/progress', {})
 end
 
@@ -41,14 +42,14 @@ end
 --- window. Calling the function twice will jump into the floating window.
 function M.hover()
   local params = util.make_position_params()
-  request('textDocument/hover', params)
+  request(ms.textDocument_hover, params)
 end
 
 local function request_with_options(name, params, options)
-  local req_handler
+  local req_handler --- @type function?
   if options then
     req_handler = function(err, result, ctx, config)
-      local client = vim.lsp.get_client_by_id(ctx.client_id)
+      local client = assert(vim.lsp.get_client_by_id(ctx.client_id))
       local handler = client.handlers[name] or vim.lsp.handlers[name]
       handler(err, result, ctx, vim.tbl_extend('force', config or {}, options))
     end
@@ -61,47 +62,51 @@ end
 ---
 ---@param options table|nil additional options
 ---     - reuse_win: (boolean) Jump to existing window if buffer is already open.
----     - on_list: (function) handler for list results. See |lsp-on-list-handler|
+---     - on_list: (function) |lsp-on-list-handler| replacing the default handler.
+---        Called for any non-empty result.
 function M.declaration(options)
   local params = util.make_position_params()
-  request_with_options('textDocument/declaration', params, options)
+  request_with_options(ms.textDocument_declaration, params, options)
 end
 
 --- Jumps to the definition of the symbol under the cursor.
 ---
 ---@param options table|nil additional options
 ---     - reuse_win: (boolean) Jump to existing window if buffer is already open.
----     - on_list: (function) handler for list results. See |lsp-on-list-handler|
+---     - on_list: (function) |lsp-on-list-handler| replacing the default handler.
+---       Called for any non-empty result.
 function M.definition(options)
   local params = util.make_position_params()
-  request_with_options('textDocument/definition', params, options)
+  request_with_options(ms.textDocument_definition, params, options)
 end
 
 --- Jumps to the definition of the type of the symbol under the cursor.
 ---
 ---@param options table|nil additional options
 ---     - reuse_win: (boolean) Jump to existing window if buffer is already open.
----     - on_list: (function) handler for list results. See |lsp-on-list-handler|
+---     - on_list: (function) |lsp-on-list-handler| replacing the default handler.
+---       Called for any non-empty result.
 function M.type_definition(options)
   local params = util.make_position_params()
-  request_with_options('textDocument/typeDefinition', params, options)
+  request_with_options(ms.textDocument_typeDefinition, params, options)
 end
 
 --- Lists all the implementations for the symbol under the cursor in the
 --- quickfix window.
 ---
 ---@param options table|nil additional options
----     - on_list: (function) handler for list results. See |lsp-on-list-handler|
+---     - on_list: (function) |lsp-on-list-handler| replacing the default handler.
+---       Called for any non-empty result.
 function M.implementation(options)
   local params = util.make_position_params()
-  request_with_options('textDocument/implementation', params, options)
+  request_with_options(ms.textDocument_implementation, params, options)
 end
 
 --- Displays signature information about the symbol under the cursor in a
 --- floating window.
 function M.signature_help()
   local params = util.make_position_params()
-  request('textDocument/signatureHelp', params)
+  request(ms.textDocument_signatureHelp, params)
 end
 
 --- Retrieves the completion items at the current cursor position. Can only be
@@ -111,11 +116,11 @@ end
 --- about the context in which a completion was triggered (how it was triggered,
 --- and by which trigger character, if applicable)
 ---
----@see vim.lsp.protocol.constants.CompletionTriggerKind
+---@see vim.lsp.protocol.CompletionTriggerKind
 function M.completion(context)
   local params = util.make_position_params()
   params.context = context
-  return request('textDocument/completion', params)
+  return request(ms.textDocument_completion, params)
 end
 
 ---@param bufnr integer
@@ -158,7 +163,7 @@ end
 ---     - formatting_options (table|nil):
 ---         Can be used to specify FormattingOptions. Some unspecified options will be
 ---         automatically derived from the current Nvim options.
----         See https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#formattingOptions
+---         See https://microsoft.github.io/language-server-protocol/specification/#formattingOptions
 ---     - timeout_ms (integer|nil, default 1000):
 ---         Time in milliseconds to block for formatting requests. No effect if async=true
 ---     - bufnr (number|nil):
@@ -167,13 +172,11 @@ end
 ---
 ---     - filter (function|nil):
 ---         Predicate used to filter clients. Receives a client as argument and must return a
----         boolean. Clients matching the predicate are included. Example:
----
----         <pre>lua
----           -- Never request typescript-language-server for formatting
----           vim.lsp.buf.format {
----             filter = function(client) return client.name ~= "tsserver" end
----           }
+---         boolean. Clients matching the predicate are included. Example: <pre>lua
+---                     -- Never request typescript-language-server for formatting
+---                     vim.lsp.buf.format {
+---                       filter = function(client) return client.name ~= "tsserver" end
+---                     }
 ---         </pre>
 ---
 ---     - async boolean|nil
@@ -199,7 +202,7 @@ function M.format(options)
   if not range and mode == 'v' or mode == 'V' then
     range = range_from_selection(bufnr, mode)
   end
-  local method = range and 'textDocument/rangeFormatting' or 'textDocument/formatting'
+  local method = range and ms.textDocument_rangeFormatting or ms.textDocument_formatting
 
   local clients = vim.lsp.get_clients({
     id = options.id,
@@ -270,7 +273,7 @@ function M.rename(new_name, options)
     bufnr = bufnr,
     name = options.name,
     -- Clients must at least support rename, prepareRename is optional
-    method = 'textDocument/rename',
+    method = ms.textDocument_rename,
   })
   if options.filter then
     clients = vim.tbl_filter(options.filter, clients)
@@ -296,26 +299,26 @@ function M.rename(new_name, options)
     )[1]
   end
 
-  local try_use_client
-  try_use_client = function(idx, client)
+  local function try_use_client(idx, client)
     if not client then
       return
     end
 
+    --- @param name string
     local function rename(name)
       local params = util.make_position_params(win, client.offset_encoding)
       params.newName = name
-      local handler = client.handlers['textDocument/rename']
-        or vim.lsp.handlers['textDocument/rename']
-      client.request('textDocument/rename', params, function(...)
+      local handler = client.handlers[ms.textDocument_rename]
+        or vim.lsp.handlers[ms.textDocument_rename]
+      client.request(ms.textDocument_rename, params, function(...)
         handler(...)
         try_use_client(next(clients, idx))
       end, bufnr)
     end
 
-    if client.supports_method('textDocument/prepareRename') then
+    if client.supports_method(ms.textDocument_prepareRename) then
       local params = util.make_position_params(win, client.offset_encoding)
-      client.request('textDocument/prepareRename', params, function(err, result)
+      client.request(ms.textDocument_prepareRename, params, function(err, result)
         if err or result == nil then
           if next(clients, idx) then
             try_use_client(next(clients, idx))
@@ -354,7 +357,7 @@ function M.rename(new_name, options)
       end, bufnr)
     else
       assert(
-        client.supports_method('textDocument/rename'),
+        client.supports_method(ms.textDocument_rename),
         'Client must support textDocument/rename'
       )
       if new_name then
@@ -390,7 +393,7 @@ function M.references(context, options)
   params.context = context or {
     includeDeclaration = true,
   }
-  request_with_options('textDocument/references', params, options)
+  request_with_options(ms.textDocument_references, params, options)
 end
 
 --- Lists all symbols in the current buffer in the quickfix window.
@@ -399,7 +402,7 @@ end
 ---     - on_list: (function) handler for list results. See |lsp-on-list-handler|
 function M.document_symbol(options)
   local params = { textDocument = util.make_text_document_params() }
-  request_with_options('textDocument/documentSymbol', params, options)
+  request_with_options(ms.textDocument_documentSymbol, params, options)
 end
 
 local function pick_call_hierarchy_item(call_hierarchy_items)
@@ -423,7 +426,7 @@ end
 
 local function call_hierarchy(method)
   local params = util.make_position_params()
-  request('textDocument/prepareCallHierarchy', params, function(err, result, ctx)
+  request(ms.textDocument_prepareCallHierarchy, params, function(err, result, ctx)
     if err then
       vim.notify(err.message, vim.log.levels.WARN)
       return
@@ -445,14 +448,14 @@ end
 --- |quickfix| window. If the symbol can resolve to multiple
 --- items, the user can pick one in the |inputlist()|.
 function M.incoming_calls()
-  call_hierarchy('callHierarchy/incomingCalls')
+  call_hierarchy(ms.callHierarchy_incomingCalls)
 end
 
 --- Lists all the items that are called by the symbol under the
 --- cursor in the |quickfix| window. If the symbol can resolve to
 --- multiple items, the user can pick one in the |inputlist()|.
 function M.outgoing_calls()
-  call_hierarchy('callHierarchy/outgoingCalls')
+  call_hierarchy(ms.callHierarchy_outgoingCalls)
 end
 
 --- List workspace folders.
@@ -480,11 +483,13 @@ function M.add_workspace_folder(workspace_folder)
     print(workspace_folder, ' is not a valid directory')
     return
   end
-  local params = util.make_workspace_params(
-    { { uri = vim.uri_from_fname(workspace_folder), name = workspace_folder } },
-    {}
-  )
-  for _, client in pairs(vim.lsp.get_clients({ bufnr = 0 })) do
+  local new_workspace = {
+    uri = vim.uri_from_fname(workspace_folder),
+    name = workspace_folder,
+  }
+  local params = { event = { added = { new_workspace }, removed = {} } }
+  local bufnr = vim.api.nvim_get_current_buf()
+  for _, client in pairs(vim.lsp.get_clients({ bufnr = bufnr })) do
     local found = false
     for _, folder in pairs(client.workspace_folders or {}) do
       if folder.name == workspace_folder then
@@ -494,11 +499,11 @@ function M.add_workspace_folder(workspace_folder)
       end
     end
     if not found then
-      vim.lsp.buf_notify(0, 'workspace/didChangeWorkspaceFolders', params)
+      client.notify(ms.workspace_didChangeWorkspaceFolders, params)
       if not client.workspace_folders then
         client.workspace_folders = {}
       end
-      table.insert(client.workspace_folders, params.event.added[1])
+      table.insert(client.workspace_folders, new_workspace)
     end
   end
 end
@@ -513,14 +518,16 @@ function M.remove_workspace_folder(workspace_folder)
   if not (workspace_folder and #workspace_folder > 0) then
     return
   end
-  local params = util.make_workspace_params(
-    { {} },
-    { { uri = vim.uri_from_fname(workspace_folder), name = workspace_folder } }
-  )
-  for _, client in pairs(vim.lsp.get_clients({ bufnr = 0 })) do
-    for idx, folder in pairs(client.workspace_folders or {}) do
+  local workspace = {
+    uri = vim.uri_from_fname(workspace_folder),
+    name = workspace_folder,
+  }
+  local params = { event = { added = {}, removed = { workspace } } }
+  local bufnr = vim.api.nvim_get_current_buf()
+  for _, client in pairs(vim.lsp.get_clients({ bufnr = bufnr })) do
+    for idx, folder in pairs(client.workspace_folders) do
       if folder.name == workspace_folder then
-        vim.lsp.buf_notify(0, 'workspace/didChangeWorkspaceFolders', params)
+        client.notify(ms.workspace_didChangeWorkspaceFolders, params)
         client.workspace_folders[idx] = nil
         return
       end
@@ -544,17 +551,18 @@ function M.workspace_symbol(query, options)
     return
   end
   local params = { query = query }
-  request_with_options('workspace/symbol', params, options)
+  request_with_options(ms.workspace_symbol, params, options)
 end
 
 --- Send request to the server to resolve document highlights for the current
 --- text document position. This request can be triggered by a  key mapping or
 --- by events such as `CursorHold`, e.g.:
---- <pre>vim
----   autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()
----   autocmd CursorHoldI <buffer> lua vim.lsp.buf.document_highlight()
----   autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()
---- </pre>
+---
+--- ```vim
+--- autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()
+--- autocmd CursorHoldI <buffer> lua vim.lsp.buf.document_highlight()
+--- autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()
+--- ```
 ---
 --- Note: Usage of |vim.lsp.buf.document_highlight()| requires the following highlight groups
 ---       to be defined or you won't be able to see the actual highlights.
@@ -563,13 +571,24 @@ end
 ---         |hl-LspReferenceWrite|
 function M.document_highlight()
   local params = util.make_position_params()
-  request('textDocument/documentHighlight', params)
+  request(ms.textDocument_documentHighlight, params)
 end
 
 --- Removes document highlights from current buffer.
 function M.clear_references()
   util.buf_clear_references()
 end
+
+---@class vim.lsp.CodeActionResultEntry
+---@field error? lsp.ResponseError
+---@field result? (lsp.Command|lsp.CodeAction)[]
+---@field ctx lsp.HandlerContext
+
+---@class vim.lsp.buf.code_action.opts
+---@field context? lsp.CodeActionContext
+---@field filter? fun(x: lsp.CodeAction|lsp.Command):boolean
+---@field apply? boolean
+---@field range? {start: integer[], end: integer[]}
 
 --- This is not public because the main extension point is
 --- vim.ui.select which can be overridden independently.
@@ -579,17 +598,18 @@ end
 --- from multiple clients to have 1 single UI prompt for the user, yet we still
 --- need to be able to link a `CodeAction|Command` to the right client for
 --- `codeAction/resolve`
-local function on_code_action_results(results, ctx, options)
-  local action_tuples = {}
-
+---@param results table<integer, vim.lsp.CodeActionResultEntry>
+---@param opts? vim.lsp.buf.code_action.opts
+local function on_code_action_results(results, opts)
+  ---@param a lsp.Command|lsp.CodeAction
   local function action_filter(a)
     -- filter by specified action kind
-    if options and options.context and options.context.only then
+    if opts and opts.context and opts.context.only then
       if not a.kind then
         return false
       end
       local found = false
-      for _, o in ipairs(options.context.only) do
+      for _, o in ipairs(opts.context.only) do
         -- action kinds are hierarchical with . as a separator: when requesting only 'type-annotate'
         -- this filter allows both 'type-annotate' and 'type-annotate.foo', for example
         if a.kind == o or vim.startswith(a.kind, o .. '.') then
@@ -602,26 +622,31 @@ local function on_code_action_results(results, ctx, options)
       end
     end
     -- filter by user function
-    if options and options.filter and not options.filter(a) then
+    if opts and opts.filter and not opts.filter(a) then
       return false
     end
     -- no filter removed this action
     return true
   end
 
-  for client_id, result in pairs(results) do
+  ---@type {action: lsp.Command|lsp.CodeAction, ctx: lsp.HandlerContext}[]
+  local actions = {}
+  for _, result in pairs(results) do
     for _, action in pairs(result.result or {}) do
       if action_filter(action) then
-        table.insert(action_tuples, { client_id, action })
+        table.insert(actions, { action = action, ctx = result.ctx })
       end
     end
   end
-  if #action_tuples == 0 then
+  if #actions == 0 then
     vim.notify('No code actions available', vim.log.levels.INFO)
     return
   end
 
-  local function apply_action(action, client)
+  ---@param action lsp.Command|lsp.CodeAction
+  ---@param client lsp.Client
+  ---@param ctx lsp.HandlerContext
+  local function apply_action(action, client, ctx)
     if action.edit then
       util.apply_workspace_edit(action.edit, client.offset_encoding)
     end
@@ -631,8 +656,9 @@ local function on_code_action_results(results, ctx, options)
     end
   end
 
-  local function on_user_choice(action_tuple)
-    if not action_tuple then
+  ---@param choice {action: lsp.Command|lsp.CodeAction, ctx: lsp.HandlerContext}
+  local function on_user_choice(choice)
+    if not choice then
       return
     end
     -- textDocument/codeAction can return either Command[] or CodeAction[]
@@ -648,53 +674,50 @@ local function on_code_action_results(results, ctx, options)
     --  arguments?: any[]
     --
     ---@type lsp.Client
-    local client = vim.lsp.get_client_by_id(action_tuple[1])
-    local action = action_tuple[2]
+    local client = assert(vim.lsp.get_client_by_id(choice.ctx.client_id))
+    local action = choice.action
+    local bufnr = assert(choice.ctx.bufnr, 'Must have buffer number')
 
-    local reg = client.dynamic_capabilities:get('textDocument/codeAction', { bufnr = ctx.bufnr })
+    local reg = client.dynamic_capabilities:get(ms.textDocument_codeAction, { bufnr = bufnr })
 
     local supports_resolve = vim.tbl_get(reg or {}, 'registerOptions', 'resolveProvider')
-      or client.supports_method('codeAction/resolve')
+      or client.supports_method(ms.codeAction_resolve)
 
     if not action.edit and client and supports_resolve then
-      client.request('codeAction/resolve', action, function(err, resolved_action)
+      client.request(ms.codeAction_resolve, action, function(err, resolved_action)
         if err then
-          vim.notify(err.code .. ': ' .. err.message, vim.log.levels.ERROR)
-          return
+          if action.command then
+            apply_action(action, client, choice.ctx)
+          else
+            vim.notify(err.code .. ': ' .. err.message, vim.log.levels.ERROR)
+          end
+        else
+          apply_action(resolved_action, client, choice.ctx)
         end
-        apply_action(resolved_action, client)
-      end, ctx.bufnr)
+      end, bufnr)
     else
-      apply_action(action, client)
+      apply_action(action, client, choice.ctx)
     end
   end
 
   -- If options.apply is given, and there are just one remaining code action,
   -- apply it directly without querying the user.
-  if options and options.apply and #action_tuples == 1 then
-    on_user_choice(action_tuples[1])
+  if opts and opts.apply and #actions == 1 then
+    on_user_choice(actions[1])
     return
   end
 
-  vim.ui.select(action_tuples, {
+  ---@param item {action: lsp.Command|lsp.CodeAction}
+  local function format_item(item)
+    local title = item.action.title:gsub('\r\n', '\\r\\n')
+    return title:gsub('\n', '\\n')
+  end
+  local select_opts = {
     prompt = 'Code actions:',
     kind = 'codeaction',
-    format_item = function(action_tuple)
-      local title = action_tuple[2].title:gsub('\r\n', '\\r\\n')
-      return title:gsub('\n', '\\n')
-    end,
-  }, on_user_choice)
-end
-
---- Requests code actions from all clients and calls the handler exactly once
---- with all aggregated results
-local function code_action_request(params, options)
-  local bufnr = api.nvim_get_current_buf()
-  local method = 'textDocument/codeAction'
-  vim.lsp.buf_request_all(bufnr, method, params, function(results)
-    local ctx = { bufnr = bufnr, method = method, params = params }
-    on_code_action_results(results, ctx, options)
-  end)
+    format_item = format_item,
+  }
+  vim.ui.select(actions, select_opts, on_user_choice)
 end
 
 --- Selects a code action available at the current
@@ -724,7 +747,7 @@ end
 ---           using mark-like indexing. See |api-indexing|
 ---
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_codeAction
----@see vim.lsp.protocol.constants.CodeActionTriggerKind
+---@see vim.lsp.protocol.CodeActionTriggerKind
 function M.code_action(options)
   validate({ options = { options, 't', true } })
   options = options or {}
@@ -741,21 +764,50 @@ function M.code_action(options)
     local bufnr = api.nvim_get_current_buf()
     context.diagnostics = vim.lsp.diagnostic.get_line_diagnostics(bufnr)
   end
-  local params
   local mode = api.nvim_get_mode().mode
-  if options.range then
-    assert(type(options.range) == 'table', 'code_action range must be a table')
-    local start = assert(options.range.start, 'range must have a `start` property')
-    local end_ = assert(options.range['end'], 'range must have a `end` property')
-    params = util.make_given_range_params(start, end_)
-  elseif mode == 'v' or mode == 'V' then
-    local range = range_from_selection(0, mode)
-    params = util.make_given_range_params(range.start, range['end'])
-  else
-    params = util.make_range_params()
+  local bufnr = api.nvim_get_current_buf()
+  local win = api.nvim_get_current_win()
+  local clients = vim.lsp.get_clients({ bufnr = bufnr, method = ms.textDocument_codeAction })
+  local remaining = #clients
+  if remaining == 0 then
+    if next(vim.lsp.get_clients({ bufnr = bufnr })) then
+      vim.notify(vim.lsp._unsupported_method(ms.textDocument_codeAction), vim.log.levels.WARN)
+    end
+    return
   end
-  params.context = context
-  code_action_request(params, options)
+
+  ---@type table<integer, vim.lsp.CodeActionResultEntry>
+  local results = {}
+
+  ---@param err? lsp.ResponseError
+  ---@param result? (lsp.Command|lsp.CodeAction)[]
+  ---@param ctx lsp.HandlerContext
+  local function on_result(err, result, ctx)
+    results[ctx.client_id] = { error = err, result = result, ctx = ctx }
+    remaining = remaining - 1
+    if remaining == 0 then
+      on_code_action_results(results, options)
+    end
+  end
+
+  for _, client in ipairs(clients) do
+    ---@type lsp.CodeActionParams
+    local params
+    if options.range then
+      assert(type(options.range) == 'table', 'code_action range must be a table')
+      local start = assert(options.range.start, 'range must have a `start` property')
+      local end_ = assert(options.range['end'], 'range must have a `end` property')
+      params = util.make_given_range_params(start, end_, bufnr, client.offset_encoding)
+    elseif mode == 'v' or mode == 'V' then
+      local range = range_from_selection(bufnr, mode)
+      params =
+        util.make_given_range_params(range.start, range['end'], bufnr, client.offset_encoding)
+    else
+      params = util.make_range_params(win, client.offset_encoding)
+    end
+    params.context = context
+    client.request(ms.textDocument_codeAction, params, on_result, bufnr)
+  end
 end
 
 --- Executes an LSP server command.
@@ -772,7 +824,7 @@ function M.execute_command(command_params)
     arguments = command_params.arguments,
     workDoneToken = command_params.workDoneToken,
   }
-  request('workspace/executeCommand', command_params)
+  request(ms.workspace_executeCommand, command_params)
 end
 
 return M

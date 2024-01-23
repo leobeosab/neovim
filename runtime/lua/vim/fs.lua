@@ -5,7 +5,8 @@ local iswin = vim.uv.os_uname().sysname == 'Windows_NT'
 --- Iterate over all the parents of the given path.
 ---
 --- Example:
---- <pre>lua
+---
+--- ```lua
 --- local root_dir
 --- for dir in vim.fs.parents(vim.api.nvim_buf_get_name(0)) do
 ---   if vim.fn.isdirectory(dir .. "/.git") == 1 then
@@ -17,10 +18,12 @@ local iswin = vim.uv.os_uname().sysname == 'Windows_NT'
 --- if root_dir then
 ---   print("Found git repository at", root_dir)
 --- end
---- </pre>
+--- ```
 ---
 ---@param start (string) Initial path.
----@return function Iterator
+---@return fun(_, dir: string): string? # Iterator
+---@return nil
+---@return string|nil
 function M.parents(start)
   return function(_, dir)
     local parent = M.dirname(dir)
@@ -120,6 +123,7 @@ function M.dir(path, opts)
   return coroutine.wrap(function()
     local dirs = { { path, 1 } }
     while #dirs > 0 do
+      --- @type string, integer
       local dir0, level = unpack(table.remove(dirs, 1))
       local dir = level == 1 and dir0 or M.joinpath(path, dir0)
       local fs = vim.uv.fs_scandir(M.normalize(dir))
@@ -143,6 +147,13 @@ function M.dir(path, opts)
   end)
 end
 
+--- @class vim.fs.find.opts
+--- @field path string
+--- @field upward boolean
+--- @field stop string
+--- @field type string
+--- @field limit number
+
 --- Find files or directories (or other items as specified by `opts.type`) in the given path.
 ---
 --- Finds items given in {names} starting from {path}. If {upward} is "true"
@@ -155,7 +166,8 @@ end
 --- to narrow the search to find only that type.
 ---
 --- Examples:
---- <pre>lua
+---
+--- ```lua
 --- -- location of Cargo.toml from the current buffer's path
 --- local cargo = vim.fs.find('Cargo.toml', {
 ---   upward = true,
@@ -173,9 +185,9 @@ end
 --- local cpp_hpp = vim.fs.find(function(name, path)
 ---   return name:match('.*%.[ch]pp$') and path:match('[/\\\\]lib$')
 --- end, {limit = math.huge, type = 'file'})
---- </pre>
+--- ```
 ---
----@param names (string|table|fun(name: string, path: string): boolean) Names of the items to find.
+---@param names (string|string[]|fun(name: string, path: string): boolean) Names of the items to find.
 ---             Must be base names, paths and globs are not supported when {names} is a string or a table.
 ---             If {names} is a function, it is called for each traversed item with args:
 ---             - name: base name of the current item
@@ -196,9 +208,9 @@ end
 ---                       - limit (number, default 1): Stop the search after
 ---                               finding this many matches. Use `math.huge` to
 ---                               place no limit on the number of matches.
----@return (table) Normalized paths |vim.fs.normalize()| of all matching items
+---@return (string[]) # Normalized paths |vim.fs.normalize()| of all matching items
 function M.find(names, opts)
-  opts = opts or {}
+  opts = opts or {} --[[@as vim.fs.find.opts]]
   vim.validate({
     names = { names, { 's', 't', 'f' } },
     path = { opts.path, 's', true },
@@ -208,13 +220,15 @@ function M.find(names, opts)
     limit = { opts.limit, 'n', true },
   })
 
-  names = type(names) == 'string' and { names } or names
+  if type(names) == 'string' then
+    names = { names }
+  end
 
   local path = opts.path or vim.uv.cwd()
   local stop = opts.stop
   local limit = opts.limit or 1
 
-  local matches = {}
+  local matches = {} --- @type string[]
 
   local function add(match)
     matches[#matches + 1] = M.normalize(match)
@@ -224,7 +238,7 @@ function M.find(names, opts)
   end
 
   if opts.upward then
-    local test
+    local test --- @type fun(p: string): string[]
 
     if type(names) == 'function' then
       test = function(p)
@@ -238,7 +252,7 @@ function M.find(names, opts)
       end
     else
       test = function(p)
-        local t = {}
+        local t = {} --- @type string[]
         for _, name in ipairs(names) do
           local f = M.joinpath(p, name)
           local stat = vim.uv.fs_stat(f)
@@ -310,16 +324,17 @@ end
 --- variables are also expanded.
 ---
 --- Examples:
---- <pre>lua
----   vim.fs.normalize('C:\\\\Users\\\\jdoe')
----   --> 'C:/Users/jdoe'
 ---
----   vim.fs.normalize('~/src/neovim')
----   --> '/home/jdoe/src/neovim'
+--- ```lua
+--- vim.fs.normalize('C:\\\\Users\\\\jdoe')
+--- -- 'C:/Users/jdoe'
 ---
----   vim.fs.normalize('$XDG_CONFIG_HOME/nvim/init.vim')
----   --> '/Users/jdoe/.config/nvim/init.vim'
---- </pre>
+--- vim.fs.normalize('~/src/neovim')
+--- -- '/home/jdoe/src/neovim'
+---
+--- vim.fs.normalize('$XDG_CONFIG_HOME/nvim/init.vim')
+--- -- '/Users/jdoe/.config/nvim/init.vim'
+--- ```
 ---
 ---@param path (string) Path to normalize
 ---@param opts table|nil Options:

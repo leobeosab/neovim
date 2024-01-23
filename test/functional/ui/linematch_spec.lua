@@ -39,32 +39,33 @@ describe('Diff mode screen with 3 diffs open', function()
     screen = Screen.new(100, 16)
     screen:attach()
     screen:set_default_attr_ids({
-      [1] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.Gray};
-      [2] = {foreground = Screen.colors.Blue1, bold = true, background = Screen.colors.LightCyan1};
-      [3] = {reverse = true};
-      [4] = {background = Screen.colors.LightBlue};
-      [5] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.LightGray};
-      [6] = {foreground = Screen.colors.Blue1, bold = true};
-      [7] = {reverse = true, bold = true};
-      [8] = {background = Screen.colors.Red1, bold = true};
-      [10] = {foreground = Screen.colors.Brown};
-      [9] = {background = Screen.colors.Plum1};
+      [1] = { foreground = Screen.colors.DarkBlue, background = Screen.colors.Gray },
+      [2] = { foreground = Screen.colors.Blue1, bold = true, background = Screen.colors.LightCyan1 },
+      [3] = { reverse = true },
+      [4] = { background = Screen.colors.LightBlue },
+      [5] = { foreground = Screen.colors.DarkBlue, background = Screen.colors.LightGray },
+      [6] = { foreground = Screen.colors.Blue1, bold = true },
+      [7] = { reverse = true, bold = true },
+      [8] = { background = Screen.colors.Red1, bold = true },
+      [10] = { foreground = Screen.colors.Brown },
+      [9] = { background = Screen.colors.Plum1 },
     })
     feed('<c-w>=')
     feed(':windo set nu!<cr>')
   end)
 
-  describe('setup the diff screen to look like a merge conflict with 3 files in diff mode', function()
-    before_each(function()
-
-      local f1 = [[
+  describe(
+    'setup the diff screen to look like a merge conflict with 3 files in diff mode',
+    function()
+      before_each(function()
+        local f1 = [[
 
   common line
       AAA
       AAA
       AAA
       ]]
-      local f2 = [[
+        local f2 = [[
 
   common line
   <<<<<<< HEAD
@@ -77,7 +78,7 @@ describe('Diff mode screen with 3 diffs open', function()
       BBB
   >>>>>>> branch1
       ]]
-      local f3 = [[
+        local f3 = [[
 
   common line
       BBB
@@ -85,16 +86,16 @@ describe('Diff mode screen with 3 diffs open', function()
       BBB
       ]]
 
-      write_file(fname, f1, false)
-      write_file(fname_2, f2, false)
-      write_file(fname_3, f3, false)
-      reread()
-    end)
+        write_file(fname, f1, false)
+        write_file(fname_2, f2, false)
+        write_file(fname_3, f3, false)
+        reread()
+      end)
 
-    it('get from window 1', function()
-      feed('1<c-w>w')
-      feed(':2,6diffget screen-1.2<cr>')
-      screen:expect([[
+      it('get from window 1', function()
+        feed('1<c-w>w')
+        feed(':2,6diffget screen-1.2<cr>')
+        screen:expect([[
       {1:  }{10:  1 }^                           │{1:  }{10:  1 }                          │{1:  }{10:  1 }                           |
       {1:  }{10:  2 }common line                │{1:  }{10:  2 }common line               │{1:  }{10:  2 }common line                |
       {1:  }{10:  3 }{9:<<<<<<< HEAD               }│{1:  }{10:  3 }{9:<<<<<<< HEAD              }│{1:  }{10:    }{2:---------------------------}|
@@ -107,17 +108,16 @@ describe('Diff mode screen with 3 diffs open', function()
       {1:  }{10: 10 }{9:    BBB                    }│{1:  }{10: 10 }{9:    BBB                   }│{1:  }{10:    }{2:---------------------------}|
       {1:  }{10: 11 }{9:>>>>>>> branch1            }│{1:  }{10: 11 }{9:>>>>>>> branch1           }│{1:  }{10:    }{2:---------------------------}|
       {1:  }{10: 12 }                           │{1:  }{10: 12 }                          │{1:  }{10:  6 }                           |
-      {6:~                                }│{6:~                               }│{6:~                                }|
-      {6:~                                }│{6:~                               }│{6:~                                }|
+      {6:~                                }│{6:~                               }│{6:~                                }|*2
       {7:<-functional-diff-screen-1.3 [+]  }{3:<est-functional-diff-screen-1.2  Xtest-functional-diff-screen-1   }|
       :2,6diffget screen-1.2                                                                              |
       ]])
-    end)
+      end)
 
-    it('get from window 2', function()
-      feed('2<c-w>w')
-      feed(':5,7diffget screen-1.3<cr>')
-      screen:expect([[
+      it('get from window 2', function()
+        feed('2<c-w>w')
+        feed(':5,7diffget screen-1.3<cr>')
+        screen:expect([[
       {1:  }{10:  1 }                           │{1:  }{10:  1 }^                          │{1:  }{10:  1 }                           |
       {1:  }{10:  2 }common line                │{1:  }{10:  2 }common line               │{1:  }{10:  2 }common line                |
       {1:  }{10:    }{2:---------------------------}│{1:  }{10:  3 }{4:<<<<<<< HEAD              }│{1:  }{10:    }{2:---------------------------}|
@@ -127,20 +127,16 @@ describe('Diff mode screen with 3 diffs open', function()
       {1:  }{10:  5 }{9:    }{8:BBB}{9:                    }│{1:  }{10:  7 }{9:    }{8:BBB}{9:                   }│{1:  }{10:  5 }{9:    }{8:AAA}{9:                    }|
       {1:  }{10:    }{2:---------------------------}│{1:  }{10:  8 }{4:>>>>>>> branch1           }│{1:  }{10:    }{2:---------------------------}|
       {1:  }{10:  6 }                           │{1:  }{10:  9 }                          │{1:  }{10:  6 }                           |
-      {6:~                                }│{6:~                               }│{6:~                                }|
-      {6:~                                }│{6:~                               }│{6:~                                }|
-      {6:~                                }│{6:~                               }│{6:~                                }|
-      {6:~                                }│{6:~                               }│{6:~                                }|
-      {6:~                                }│{6:~                               }│{6:~                                }|
+      {6:~                                }│{6:~                               }│{6:~                                }|*5
       {3:<test-functional-diff-screen-1.3  }{7:<functional-diff-screen-1.2 [+]  }{3:Xtest-functional-diff-screen-1   }|
       :5,7diffget screen-1.3                                                                              |
       ]])
-    end)
+      end)
 
-    it('get from window 3', function()
-      feed('3<c-w>w')
-      feed(':5,6diffget screen-1.2<cr>')
-      screen:expect([[
+      it('get from window 3', function()
+        feed('3<c-w>w')
+        feed(':5,6diffget screen-1.2<cr>')
+        screen:expect([[
       {1:  }{10:  1 }                           │{1:  }{10:  1 }                          │{1:  }{10:  1 }^                           |
       {1:  }{10:  2 }common line                │{1:  }{10:  2 }common line               │{1:  }{10:  2 }common line                |
       {1:  }{10:    }{2:---------------------------}│{1:  }{10:  3 }{4:<<<<<<< HEAD              }│{1:  }{10:    }{2:---------------------------}|
@@ -153,17 +149,16 @@ describe('Diff mode screen with 3 diffs open', function()
       {1:  }{10:  5 }    BBB                    │{1:  }{10: 10 }    BBB                   │{1:  }{10:  9 }    BBB                    |
       {1:  }{10:    }{2:---------------------------}│{1:  }{10: 11 }{9:>>>>>>> branch1           }│{1:  }{10: 10 }{9:>>>>>>> branch1            }|
       {1:  }{10:  6 }                           │{1:  }{10: 12 }                          │{1:  }{10: 11 }                           |
-      {6:~                                }│{6:~                               }│{6:~                                }|
-      {6:~                                }│{6:~                               }│{6:~                                }|
+      {6:~                                }│{6:~                               }│{6:~                                }|*2
       {3:<test-functional-diff-screen-1.3  <est-functional-diff-screen-1.2  }{7:<st-functional-diff-screen-1 [+] }|
       :5,6diffget screen-1.2                                                                              |
       ]])
-    end)
+      end)
 
-    it('put from window 2 - part', function()
-      feed('2<c-w>w')
-      feed(':6,8diffput screen-1<cr>')
-      screen:expect([[
+      it('put from window 2 - part', function()
+        feed('2<c-w>w')
+        feed(':6,8diffput screen-1<cr>')
+        screen:expect([[
       {1:  }{10:  1 }                           │{1:  }{10:  1 }^                          │{1:  }{10:  1 }                           |
       {1:  }{10:  2 }common line                │{1:  }{10:  2 }common line               │{1:  }{10:  2 }common line                |
       {1:  }{10:    }{2:---------------------------}│{1:  }{10:  3 }{4:<<<<<<< HEAD              }│{1:  }{10:    }{2:---------------------------}|
@@ -176,17 +171,15 @@ describe('Diff mode screen with 3 diffs open', function()
       {1:  }{10:  5 }    BBB                    │{1:  }{10: 10 }    BBB                   │{1:  }{10:  7 }    BBB                    |
       {1:  }{10:    }{2:---------------------------}│{1:  }{10: 11 }{4:>>>>>>> branch1           }│{1:  }{10:    }{2:---------------------------}|
       {1:  }{10:  6 }                           │{1:  }{10: 12 }                          │{1:  }{10:  8 }                           |
-      {6:~                                }│{6:~                               }│{6:~                                }|
-      {6:~                                }│{6:~                               }│{6:~                                }|
+      {6:~                                }│{6:~                               }│{6:~                                }|*2
       {3:<test-functional-diff-screen-1.3  }{7:<est-functional-diff-screen-1.2  }{3:<st-functional-diff-screen-1 [+] }|
       :6,8diffput screen-1                                                                                |
       ]])
-
-    end)
-    it('put from window 2 - part to end', function()
-      feed('2<c-w>w')
-      feed(':6,11diffput screen-1<cr>')
-      screen:expect([[
+      end)
+      it('put from window 2 - part to end', function()
+        feed('2<c-w>w')
+        feed(':6,11diffput screen-1<cr>')
+        screen:expect([[
       {1:  }{10:  1 }                           │{1:  }{10:  1 }^                          │{1:  }{10:  1 }                           |
       {1:  }{10:  2 }common line                │{1:  }{10:  2 }common line               │{1:  }{10:  2 }common line                |
       {1:  }{10:    }{2:---------------------------}│{1:  }{10:  3 }{4:<<<<<<< HEAD              }│{1:  }{10:    }{2:---------------------------}|
@@ -199,14 +192,13 @@ describe('Diff mode screen with 3 diffs open', function()
       {1:  }{10:  5 }    BBB                    │{1:  }{10: 10 }    BBB                   │{1:  }{10:  9 }    BBB                    |
       {1:  }{10:    }{2:---------------------------}│{1:  }{10: 11 }{9:>>>>>>> branch1           }│{1:  }{10: 10 }{9:>>>>>>> branch1            }|
       {1:  }{10:  6 }                           │{1:  }{10: 12 }                          │{1:  }{10: 11 }                           |
-      {6:~                                }│{6:~                               }│{6:~                                }|
-      {6:~                                }│{6:~                               }│{6:~                                }|
+      {6:~                                }│{6:~                               }│{6:~                                }|*2
       {3:<test-functional-diff-screen-1.3  }{7:<est-functional-diff-screen-1.2  }{3:<st-functional-diff-screen-1 [+] }|
       :6,11diffput screen-1                                                                               |
       ]])
-
-    end)
-  end)
+      end)
+    end
+  )
 end)
 
 describe('Diff mode screen with 2 diffs open', function()
@@ -238,16 +230,16 @@ describe('Diff mode screen with 2 diffs open', function()
     screen = Screen.new(100, 20)
     screen:attach()
     screen:set_default_attr_ids({
-      [1] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.Gray};
-      [2] = {foreground = Screen.colors.Blue1, bold = true, background = Screen.colors.LightCyan1};
-      [3] = {reverse = true};
-      [4] = {background = Screen.colors.LightBlue};
-      [5] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.LightGray};
-      [6] = {foreground = Screen.colors.Blue1, bold = true};
-      [7] = {reverse = true, bold = true};
-      [8] = {background = Screen.colors.Red1, bold = true};
-      [10] = {foreground = Screen.colors.Brown};
-      [9] = {background = Screen.colors.Plum1};
+      [1] = { foreground = Screen.colors.DarkBlue, background = Screen.colors.Gray },
+      [2] = { foreground = Screen.colors.Blue1, bold = true, background = Screen.colors.LightCyan1 },
+      [3] = { reverse = true },
+      [4] = { background = Screen.colors.LightBlue },
+      [5] = { foreground = Screen.colors.DarkBlue, background = Screen.colors.LightGray },
+      [6] = { foreground = Screen.colors.Blue1, bold = true },
+      [7] = { reverse = true, bold = true },
+      [8] = { background = Screen.colors.Red1, bold = true },
+      [10] = { foreground = Screen.colors.Brown },
+      [9] = { background = Screen.colors.Plum1 },
     })
     feed('<c-w>=')
     feed(':windo set nu!<cr>')
@@ -310,12 +302,7 @@ something
       {1:  }{10:    }{2:-------------------------------------------}│{1:  }{10: 16 }{4:DEF                                         }|
       {1:  }{10: 15 }something                                  │{1:  }{10: 17 }something                                   |
       {1:  }{10: 16 }                                           │{1:  }{10: 18 }                                            |
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
+      {6:~                                                }│{6:~                                                 }|*6
       {7:Xtest-functional-diff-screen-1.2 [+]              }{3:Xtest-functional-diff-screen-1                    }|
       :5,9diffget                                                                                         |
       ]])
@@ -339,9 +326,7 @@ something
       {1:  }{10:    }{2:-------------------------------------------}│{1:  }{10: 13 }{4:DEF                                         }|
       {1:  }{10: 12 }something                                  │{1:  }{10: 14 }something                                   |
       {1:  }{10: 13 }                                           │{1:  }{10: 15 }                                            |
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
+      {6:~                                                }│{6:~                                                 }|*3
       {3:Xtest-functional-diff-screen-1.2                  }{7:Xtest-functional-diff-screen-1 [+]                }|
       :5,10diffget                                                                                        |
       ]])
@@ -363,15 +348,10 @@ something
       {1:  }{10: 11 }common line                                │{1:  }{10: 11 }common line                                 |
       {1:  }{10: 12 }something                                  │{1:  }{10: 12 }something                                   |
       {1:  }{10: 13 }                                           │{1:  }{10: 13 }                                            |
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
+      {6:~                                                }│{6:~                                                 }|*5
       {3:Xtest-functional-diff-screen-1.2                  }{7:Xtest-functional-diff-screen-1 [+]                }|
       :4,17diffget                                                                                        |
       ]])
-
     end)
     it('get all from window 1', function()
       feed('1<c-w>w')
@@ -776,7 +756,6 @@ something
       {3:Xtest-functional-diff-screen-1.2 [+]              }{7:Xtest-functional-diff-screen-1                    }|
       :e                                                                                                  |
       ]])
-
     end)
   end)
   describe('setup a diff with 2 files and set linematch:30', function()
@@ -804,19 +783,7 @@ d
       {1:  }{10:  3 }{9:d                                          }│{1:  }{10:  2 }{8:// }{9:d                                        }|
       {1:  }{10:    }{2:-------------------------------------------}│{1:  }{10:  3 }{4:// d                                        }|
       {1:  }{10:  4 }                                           │{1:  }{10:  4 }                                            |
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
+      {6:~                                                }│{6:~                                                 }|*13
       {7:Xtest-functional-diff-screen-1.2                  }{3:Xtest-functional-diff-screen-1                    }|
       :e                                                                                                  |
       ]])
@@ -853,17 +820,7 @@ void testFunction () {
       {1:  }{10:    }{2:-------------------------------------------}│{1:  }{10:  5 }{4:  }                                         }|
       {1:  }{10:  4 }}                                          │{1:  }{10:  6 }}                                           |
       {1:  }{10:  5 }                                           │{1:  }{10:  7 }                                            |
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
+      {6:~                                                }│{6:~                                                 }|*11
       {7:Xtest-functional-diff-screen-1.2                  }{3:Xtest-functional-diff-screen-1                    }|
       :e                                                                                                  |
       ]])
@@ -903,15 +860,7 @@ void testFunction () {
       {1:  }{10:  7 }{4:?B                                         }│{1:  }{10:    }{2:--------------------------------------------}|
       {1:  }{10:  8 }{4:?C                                         }│{1:  }{10:    }{2:--------------------------------------------}|
       {1:  }{10:  9 }                                           │{1:  }{10:  4 }                                            |
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
+      {6:~                                                }│{6:~                                                 }|*9
       {7:Xtest-functional-diff-screen-1.2                  }{3:Xtest-functional-diff-screen-1                    }|
       :e                                                                                                  |
       ]])
@@ -951,15 +900,7 @@ void testFunction () {
       {1:  }{10:  7 }{8:?}{9:C                                         }│{1:  }{10:  3 }{8:!}{9:C                                          }|
       {1:  }{10:  8 }{4:?C                                         }│{1:  }{10:    }{2:--------------------------------------------}|
       {1:  }{10:  9 }                                           │{1:  }{10:  4 }                                            |
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
+      {6:~                                                }│{6:~                                                 }|*9
       {7:Xtest-functional-diff-screen-1.2                  }{3:Xtest-functional-diff-screen-1                    }|
       :e                                                                                                  |
       ]])
@@ -1006,10 +947,12 @@ something
       reread()
     end)
 
-    it('enable linematch for the longest diff block by increasing the number argument passed to linematch', function()
-      feed('1<c-w>w')
-      -- linematch is disabled for the longest diff because it's combined line length is over 10
-      screen:expect([[
+    it(
+      'enable linematch for the longest diff block by increasing the number argument passed to linematch',
+      function()
+        feed('1<c-w>w')
+        -- linematch is disabled for the longest diff because it's combined line length is over 10
+        screen:expect([[
       {1:  }{10:  1 }^common line                                │{1:  }{10:  1 }common line                                 |
       {1:  }{10:  2 }{4:DEF                                        }│{1:  }{10:    }{2:--------------------------------------------}|
       {1:  }{10:  3 }{8:GHI}{9:                                        }│{1:  }{10:  2 }{8:HIL}{9:                                         }|
@@ -1031,10 +974,10 @@ something
       {7:Xtest-functional-diff-screen-1.2                  }{3:Xtest-functional-diff-screen-1                    }|
       :e                                                                                                  |
       ]])
-      -- enable it by increasing the number
-      feed(":set diffopt-=linematch:10<cr>")
-      feed(":set diffopt+=linematch:30<cr>")
-      screen:expect([[
+        -- enable it by increasing the number
+        feed(':set diffopt-=linematch:10<cr>')
+        feed(':set diffopt+=linematch:30<cr>')
+        screen:expect([[
       {1:  }{10:  1 }^common line                                │{1:  }{10:  1 }common line                                 |
       {1:  }{10:  2 }{4:DEF                                        }│{1:  }{10:    }{2:--------------------------------------------}|
       {1:  }{10:  3 }{8:GHI}{9:                                        }│{1:  }{10:  2 }{8:HIL}{9:                                         }|
@@ -1056,7 +999,8 @@ something
       {7:Xtest-functional-diff-screen-1.2                  }{3:Xtest-functional-diff-screen-1                    }|
       :set diffopt+=linematch:30                                                                          |
       ]])
-    end)
+      end
+    )
     it('get all from second window', function()
       feed('2<c-w>w')
       feed(':1,12diffget<cr>')
@@ -1099,20 +1043,17 @@ something
       {1:  }{10: 10 }common line                                │{1:  }{10: 10 }common line                                 |
       {1:  }{10: 11 }something                                  │{1:  }{10: 11 }something                                   |
       {1:  }{10: 12 }                                           │{1:  }{10: 12 }                                            |
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
-      {6:~                                                }│{6:~                                                 }|
+      {6:~                                                }│{6:~                                                 }|*6
       {7:Xtest-functional-diff-screen-1.2 [+]              }{3:Xtest-functional-diff-screen-1                    }|
       :1,19diffget                                                                                        |
       ]])
     end)
-    it('get part of the non linematched diff block in window 2 line 7 - 8 (non line matched block)', function()
-      feed('2<c-w>w')
-      feed(':7,8diffget<cr>')
-      screen:expect([[
+    it(
+      'get part of the non linematched diff block in window 2 line 7 - 8 (non line matched block)',
+      function()
+        feed('2<c-w>w')
+        feed(':7,8diffget<cr>')
+        screen:expect([[
       {1:  }{10:  1 }common line                                │{1:  }{10:  1 }^common line                                 |
       {1:  }{10:  2 }{4:DEF                                        }│{1:  }{10:    }{2:--------------------------------------------}|
       {1:  }{10:  3 }{8:GHI}{9:                                        }│{1:  }{10:  2 }{8:HIL}{9:                                         }|
@@ -1134,11 +1075,14 @@ something
       {3:Xtest-functional-diff-screen-1.2                  }{7:Xtest-functional-diff-screen-1 [+]                }|
       :7,8diffget                                                                                         |
       ]])
-    end)
-    it('get part of the non linematched diff block in window 2 line 8 - 10 (line matched block)', function()
-      feed('2<c-w>w')
-      feed(':8,10diffget<cr>')
-      screen:expect([[
+      end
+    )
+    it(
+      'get part of the non linematched diff block in window 2 line 8 - 10 (line matched block)',
+      function()
+        feed('2<c-w>w')
+        feed(':8,10diffget<cr>')
+        screen:expect([[
       {1:  }{10:  1 }common line                                │{1:  }{10:  1 }^common line                                 |
       {1:  }{10:  2 }{4:DEF                                        }│{1:  }{10:    }{2:--------------------------------------------}|
       {1:  }{10:  3 }{8:GHI}{9:                                        }│{1:  }{10:  2 }{8:HIL}{9:                                         }|
@@ -1160,7 +1104,8 @@ something
       {3:Xtest-functional-diff-screen-1.2                  }{7:Xtest-functional-diff-screen-1 [+]                }|
       :8,10diffget                                                                                        |
       ]])
-    end)
+      end
+    )
   end)
 end)
 
@@ -1173,9 +1118,60 @@ describe('regressions', function()
     screen = Screen.new(100, 20)
     screen:attach()
     -- line must be greater than MATCH_CHAR_MAX_LEN
-    helpers.curbufmeths.set_lines(0, -1, false, { string.rep('a', 1000)..'hello' })
+    helpers.api.nvim_buf_set_lines(0, 0, -1, false, { string.rep('a', 1000) .. 'hello' })
     helpers.exec 'vnew'
-    helpers.curbufmeths.set_lines(0, -1, false, { string.rep('a', 1010)..'world' })
+    helpers.api.nvim_buf_set_lines(0, 0, -1, false, { string.rep('a', 1010) .. 'world' })
     helpers.exec 'windo diffthis'
+  end)
+
+  it('properly computes filler lines for hunks bigger than linematch limit', function()
+    clear()
+    feed(':set diffopt+=linematch:10<cr>')
+    screen = Screen.new(100, 20)
+    screen:attach()
+    local lines = {}
+    for i = 0, 29 do
+      lines[#lines + 1] = tostring(i)
+    end
+    helpers.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+    helpers.exec 'vnew'
+    helpers.api.nvim_buf_set_lines(0, 0, -1, false, { '00', '29' })
+    helpers.exec 'windo diffthis'
+    feed('<C-e>')
+    screen:expect {
+      grid = [[
+      {1:  }{2:------------------------------------------------}│{1:  }{3:^1                                              }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:2                                              }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:3                                              }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:4                                              }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:5                                              }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:6                                              }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:7                                              }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:8                                              }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:9                                              }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:10                                             }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:11                                             }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:12                                             }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:13                                             }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:14                                             }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:15                                             }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:16                                             }|
+      {1:  }{2:------------------------------------------------}│{1:  }{3:17                                             }|
+      {1:  }29                                              │{1:  }{3:18                                             }|
+      {4:[No Name] [+]                                      }{5:[No Name] [+]                                    }|
+                                                                                                          |
+    ]],
+      attr_ids = {
+        [1] = { foreground = Screen.colors.DarkBlue, background = Screen.colors.Grey },
+        [2] = {
+          bold = true,
+          background = Screen.colors.LightCyan,
+          foreground = Screen.colors.Blue1,
+        },
+        [3] = { background = Screen.colors.LightBlue },
+        [4] = { reverse = true },
+        [5] = { reverse = true, bold = true },
+      },
+    }
   end)
 end)

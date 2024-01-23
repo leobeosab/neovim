@@ -53,31 +53,25 @@ describe('insert-mode', function()
     it('double quote is removed after hit-enter prompt #22609', function()
       local screen = Screen.new(60, 6)
       screen:set_default_attr_ids({
-        [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-        [1] = {foreground = Screen.colors.Blue},  -- SpecialKey
-        [2] = {foreground = Screen.colors.SlateBlue},
-        [3] = {bold = true},  -- ModeMsg
-        [4] = {reverse = true, bold = true},  -- MsgSeparator
-        [5] = {background = Screen.colors.Red, foreground = Screen.colors.White},  -- ErrorMsg
-        [6] = {foreground = Screen.colors.SeaGreen, bold = true},  -- MoreMsg
+        [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+        [1] = { foreground = Screen.colors.Blue }, -- SpecialKey
+        [2] = { foreground = Screen.colors.SlateBlue },
+        [3] = { bold = true }, -- ModeMsg
+        [4] = { reverse = true, bold = true }, -- MsgSeparator
+        [5] = { background = Screen.colors.Red, foreground = Screen.colors.White }, -- ErrorMsg
+        [6] = { foreground = Screen.colors.SeaGreen, bold = true }, -- MoreMsg
       })
       screen:attach()
       feed('i<C-R>')
       screen:expect([[
         {1:^"}                                                           |
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
+        {0:~                                                           }|*4
         {3:-- INSERT --}                                                |
       ]])
       feed('={}')
       screen:expect([[
         {1:"}                                                           |
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
+        {0:~                                                           }|*4
         ={2:{}}^                                                         |
       ]])
       feed('<CR>')
@@ -92,10 +86,7 @@ describe('insert-mode', function()
       feed('<CR>')
       screen:expect([[
         ^                                                            |
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
+        {0:~                                                           }|*4
         {3:-- INSERT --}                                                |
       ]])
     end)
@@ -191,5 +182,43 @@ describe('insert-mode', function()
   it('Ctrl-Shift-V supports entering unsimplified key notations', function()
     feed('i<C-S-V><C-J><C-S-V><C-@><C-S-V><C-[><C-S-V><C-S-M><C-S-V><M-C-I><C-S-V><C-D-J><Esc>')
     expect('<C-J><C-@><C-[><C-S-M><M-C-I><C-D-J>')
+  end)
+
+  it('multi-char mapping updates screen properly #25626', function()
+    local screen = Screen.new(60, 6)
+    screen:set_default_attr_ids({
+      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+      [1] = { bold = true, reverse = true }, -- StatusLine
+      [2] = { reverse = true }, -- StatusLineNC
+      [3] = { bold = true }, -- ModeMsg
+    })
+    screen:attach()
+    command('vnew')
+    insert('foo\nfoo\nfoo')
+    command('wincmd w')
+    command('set timeoutlen=10000')
+    command('inoremap jk <Esc>')
+    feed('i<CR>βββ<Left><Left>j')
+    screen:expect {
+      grid = [[
+      foo                           │                             |
+      foo                           │β^jβ                          |
+      foo                           │{0:~                            }|
+      {0:~                             }│{0:~                            }|
+      {2:[No Name] [+]                  }{1:[No Name] [+]                }|
+      {3:-- INSERT --}                                                |
+    ]],
+    }
+    feed('k')
+    screen:expect {
+      grid = [[
+      foo                           │                             |
+      foo                           │^βββ                          |
+      foo                           │{0:~                            }|
+      {0:~                             }│{0:~                            }|
+      {2:[No Name] [+]                  }{1:[No Name] [+]                }|
+                                                                  |
+    ]],
+    }
   end)
 end)

@@ -29,6 +29,7 @@ for k, v in pairs({
   treesitter = true,
   filetype = true,
   loader = true,
+  func = true,
   F = true,
   lsp = true,
   highlight = true,
@@ -37,6 +38,7 @@ for k, v in pairs({
   ui = true,
   health = true,
   secure = true,
+  snippet = true,
   _watch = true,
 }) do
   vim._submodules[k] = v
@@ -67,31 +69,33 @@ vim.log = {
 }
 
 -- TODO(lewis6991): document that the signature is system({cmd}, [{opts},] {on_exit})
---- Run a system command
+--- Runs a system command or throws an error if {cmd} cannot be run.
 ---
 --- Examples:
---- <pre>lua
 ---
----   local on_exit = function(obj)
----     print(obj.code)
----     print(obj.signal)
----     print(obj.stdout)
----     print(obj.stderr)
----   end
+--- ```lua
 ---
----   -- Run asynchronously
----   vim.system({'echo', 'hello'}, { text = true }, on_exit)
+--- local on_exit = function(obj)
+---   print(obj.code)
+---   print(obj.signal)
+---   print(obj.stdout)
+---   print(obj.stderr)
+--- end
 ---
----   -- Run synchronously
----   local obj = vim.system({'echo', 'hello'}, { text = true }):wait()
----   -- { code = 0, signal = 0, stdout = 'hello', stderr = '' }
+--- -- Runs asynchronously:
+--- vim.system({'echo', 'hello'}, { text = true }, on_exit)
 ---
---- </pre>
+--- -- Runs synchronously:
+--- local obj = vim.system({'echo', 'hello'}, { text = true }):wait()
+--- -- { code = 0, signal = 0, stdout = 'hello', stderr = '' }
 ---
---- See |uv.spawn()| for more details.
+--- ```
+---
+--- See |uv.spawn()| for more details. Note: unlike |uv.spawn()|, vim.system
+--- throws an error if {cmd} cannot be run.
 ---
 --- @param cmd (string[]) Command to execute
---- @param opts (SystemOpts|nil) Options:
+--- @param opts vim.SystemOpts? Options:
 ---   - cwd: (string) Set the current working directory for the sub-process.
 ---   - env: table<string,string> Set environment variables for the new process. Inherits the
 ---     current environment with `NVIM` set to |v:servername|.
@@ -104,27 +108,30 @@ vim.log = {
 ---     Handle output from stdout. When passed as a function must have the signature `fun(err: string, data: string)`.
 ---     Defaults to `true`
 ---   - stderr: (boolean|function)
----     Handle output from stdout. When passed as a function must have the signature `fun(err: string, data: string)`.
+---     Handle output from stderr. When passed as a function must have the signature `fun(err: string, data: string)`.
 ---     Defaults to `true`.
 ---   - text: (boolean) Handle stdout and stderr as text. Replaces `\r\n` with `\n`.
----   - timeout: (integer)
+---   - timeout: (integer) Run the command with a time limit. Upon timeout the process is sent the
+---     TERM signal (15) and the exit code is set to 124.
 ---   - detach: (boolean) If true, spawn the child process in a detached state - this will make it
 ---     a process group leader, and will effectively enable the child to keep running after the
 ---     parent exits. Note that the child process will still keep the parent's event loop alive
 ---     unless the parent process calls |uv.unref()| on the child's process handle.
 ---
---- @param on_exit (function|nil) Called when subprocess exits. When provided, the command runs
+--- @param on_exit? fun(out: vim.SystemCompleted) Called when subprocess exits. When provided, the command runs
 ---   asynchronously. Receives SystemCompleted object, see return of SystemObj:wait().
 ---
---- @return SystemObj Object with the fields:
+--- @return vim.SystemObj Object with the fields:
 ---   - pid (integer) Process ID
----   - wait (fun(timeout: integer|nil): SystemCompleted)
+---   - wait (fun(timeout: integer|nil): SystemCompleted) Wait for the process to complete. Upon
+---     timeout the process is sent the KILL signal (9) and the exit code is set to 124. Cannot
+---     be called in |api-fast|.
 ---     - SystemCompleted is an object with the fields:
 ---      - code: (integer)
 ---      - signal: (integer)
 ---      - stdout: (string), nil if stdout argument is passed
 ---      - stderr: (string), nil if stderr argument is passed
----   - kill (fun(signal: integer))
+---   - kill (fun(signal: integer|string))
 ---   - write (fun(data: string|nil)) Requires `stdin=true`. Pass `nil` to close the stream.
 ---   - is_closing (fun(): boolean)
 function vim.system(cmd, opts, on_exit)
@@ -149,10 +156,10 @@ function vim._os_proc_info(pid)
   elseif r.code ~= 0 then
     error('command failed: ' .. vim.fn.string(cmd))
   end
-  local ppid = assert(vim.system({ 'ps', '-p', pid, '-o', 'ppid=' }):wait().stdout)
+  local ppid_string = assert(vim.system({ 'ps', '-p', pid, '-o', 'ppid=' }):wait().stdout)
   -- Remove trailing whitespace.
   name = vim.trim(name):gsub('^.*/', '')
-  ppid = tonumber(ppid) or -1
+  local ppid = tonumber(ppid_string) or -1
   return {
     name = name,
     pid = pid,
@@ -183,11 +190,18 @@ function vim._os_proc_children(ppid)
   return children
 end
 
+--- @class vim.inspect.Opts
+--- @field depth? integer
+--- @field newline? string
+--- @field process? fun(item:any, path: string[]): any
+
 --- Gets a human-readable representation of the given object.
 ---
 ---@see |vim.print()|
 ---@see https://github.com/kikito/inspect.lua
 ---@see https://github.com/mpeterv/vinspect
+---@return string
+---@overload fun(x: any, opts?: vim.inspect.Opts): string
 vim.inspect = vim.inspect
 
 do
@@ -197,7 +211,8 @@ do
   --- (such as the |TUI|) pastes text into the editor.
   ---
   --- Example: To remove ANSI color codes when pasting:
-  --- <pre>lua
+  ---
+  --- ```lua
   --- vim.paste = (function(overridden)
   ---   return function(lines, phase)
   ---     for i,line in ipairs(lines) do
@@ -207,13 +222,12 @@ do
   ---     overridden(lines, phase)
   ---   end
   --- end)(vim.paste)
-  --- </pre>
+  --- ```
   ---
   ---@see |paste|
-  ---@alias paste_phase -1 | 1 | 2 | 3
   ---
   ---@param lines  string[] # |readfile()|-style list of lines to paste. |channel-lines|
-  ---@param phase paste_phase  -1: "non-streaming" paste: the call contains all lines.
+  ---@param phase (-1|1|2|3)  -1: "non-streaming" paste: the call contains all lines.
   ---              If paste is "streamed", `phase` indicates the stream state:
   ---                - 1: starts the paste (exactly once)
   ---                - 2: continues the paste (zero or more times)
@@ -310,18 +324,29 @@ do
   end
 end
 
---- Defers callback `cb` until the Nvim API is safe to call.
+--- Returns a function which calls {fn} via |vim.schedule()|.
+---
+--- The returned function passes all arguments to {fn}.
+---
+--- Example:
+---
+--- ```lua
+--- function notify_readable(_err, readable)
+---   vim.notify("readable? " .. tostring(readable))
+--- end
+--- vim.uv.fs_access(vim.fn.stdpath("config"), "R", vim.schedule_wrap(notify_readable))
+--- ```
 ---
 ---@see |lua-loop-callbacks|
 ---@see |vim.schedule()|
 ---@see |vim.in_fast_event()|
----@param cb function
+---@param fn function
 ---@return function
-function vim.schedule_wrap(cb)
+function vim.schedule_wrap(fn)
   return function(...)
     local args = vim.F.pack_len(...)
     vim.schedule(function()
-      cb(vim.F.unpack_len(args))
+      fn(vim.F.unpack_len(args))
     end)
   end
 end
@@ -352,38 +377,39 @@ end
 
 local VIM_CMD_ARG_MAX = 20
 
---- Execute Vim script commands.
+--- Executes Vim script commands.
 ---
 --- Note that `vim.cmd` can be indexed with a command name to return a callable function to the
 --- command.
 ---
 --- Example:
---- <pre>lua
----   vim.cmd('echo 42')
----   vim.cmd([[
----     augroup My_group
----       autocmd!
----       autocmd FileType c setlocal cindent
----     augroup END
----   ]])
 ---
----   -- Ex command :echo "foo"
----   -- Note string literals need to be double quoted.
----   vim.cmd('echo "foo"')
----   vim.cmd { cmd = 'echo', args = { '"foo"' } }
----   vim.cmd.echo({ args = { '"foo"' } })
----   vim.cmd.echo('"foo"')
+--- ```lua
+--- vim.cmd('echo 42')
+--- vim.cmd([[
+---   augroup My_group
+---     autocmd!
+---     autocmd FileType c setlocal cindent
+---   augroup END
+--- ]])
 ---
----   -- Ex command :write! myfile.txt
----   vim.cmd('write! myfile.txt')
----   vim.cmd { cmd = 'write', args = { "myfile.txt" }, bang = true }
----   vim.cmd.write { args = { "myfile.txt" }, bang = true }
----   vim.cmd.write { "myfile.txt", bang = true }
+--- -- Ex command :echo "foo"
+--- -- Note string literals need to be double quoted.
+--- vim.cmd('echo "foo"')
+--- vim.cmd { cmd = 'echo', args = { '"foo"' } }
+--- vim.cmd.echo({ args = { '"foo"' } })
+--- vim.cmd.echo('"foo"')
 ---
----   -- Ex command :colorscheme blue
----   vim.cmd('colorscheme blue')
----   vim.cmd.colorscheme('blue')
---- </pre>
+--- -- Ex command :write! myfile.txt
+--- vim.cmd('write! myfile.txt')
+--- vim.cmd { cmd = 'write', args = { "myfile.txt" }, bang = true }
+--- vim.cmd.write { args = { "myfile.txt" }, bang = true }
+--- vim.cmd.write { "myfile.txt", bang = true }
+---
+--- -- Ex command :colorscheme blue
+--- vim.cmd('colorscheme blue')
+--- vim.cmd.colorscheme('blue')
+--- ```
 ---
 ---@param command string|table Command(s) to execute.
 ---                            If a string, executes multiple lines of Vim script at once. In this
@@ -428,10 +454,17 @@ vim.cmd = setmetatable({}, {
   end,
 })
 
+--- @class vim.var_accessor
+--- @field [string] any
+--- @field [integer] vim.var_accessor
+
 -- These are the vim.env/v/g/o/bo/wo variable magic accessors.
 do
   local validate = vim.validate
 
+  --- @param scope string
+  --- @param handle? false|integer
+  --- @return vim.var_accessor
   local function make_dict_accessor(scope, handle)
     validate({
       scope = { scope, 's' },
@@ -450,7 +483,7 @@ do
   end
 
   vim.g = make_dict_accessor('g', false)
-  vim.v = make_dict_accessor('v', false)
+  vim.v = make_dict_accessor('v', false) --[[@as vim.v]]
   vim.b = make_dict_accessor('b')
   vim.w = make_dict_accessor('w')
   vim.t = make_dict_accessor('t')
@@ -465,7 +498,7 @@ end
 ---@param pos1 integer[]|string Start of region as a (line, column) tuple or |getpos()|-compatible string
 ---@param pos2 integer[]|string End of region as a (line, column) tuple or |getpos()|-compatible string
 ---@param regtype string \|setreg()|-style selection type
----@param inclusive boolean Controls whether `pos2` column is inclusive (see also 'selection').
+---@param inclusive boolean Controls whether the ending column is inclusive (see also 'selection').
 ---@return table region Dict of the form `{linenr = {startcol,endcol}}`. `endcol` is exclusive, and
 ---whole lines are returned as `{startcol,endcol} = {0,-1}`.
 function vim.region(bufnr, pos1, pos2, regtype, inclusive)
@@ -475,11 +508,11 @@ function vim.region(bufnr, pos1, pos2, regtype, inclusive)
 
   if type(pos1) == 'string' then
     local pos = vim.fn.getpos(pos1)
-    pos1 = { pos[2] - 1, pos[3] - 1 + pos[4] }
+    pos1 = { pos[2] - 1, pos[3] - 1 }
   end
   if type(pos2) == 'string' then
     local pos = vim.fn.getpos(pos2)
-    pos2 = { pos[2] - 1, pos[3] - 1 + pos[4] }
+    pos2 = { pos[2] - 1, pos[3] - 1 }
   end
 
   if pos1[1] > pos2[1] or (pos1[1] == pos2[1] and pos1[2] > pos2[2]) then
@@ -498,34 +531,41 @@ function vim.region(bufnr, pos1, pos2, regtype, inclusive)
 
   -- in case of block selection, columns need to be adjusted for non-ASCII characters
   -- TODO: handle double-width characters
-  local bufline
   if regtype:byte() == 22 then
-    bufline = vim.api.nvim_buf_get_lines(bufnr, pos1[1], pos1[1] + 1, true)[1]
+    local bufline = vim.api.nvim_buf_get_lines(bufnr, pos1[1], pos1[1] + 1, true)[1]
     pos1[2] = vim.str_utfindex(bufline, pos1[2])
   end
 
   local region = {}
   for l = pos1[1], pos2[1] do
-    local c1, c2
+    local c1 --- @type number
+    local c2 --- @type number
     if regtype:byte() == 22 then -- block selection: take width from regtype
       c1 = pos1[2]
-      c2 = c1 + regtype:sub(2)
+      c2 = c1 + tonumber(regtype:sub(2))
       -- and adjust for non-ASCII characters
-      bufline = vim.api.nvim_buf_get_lines(bufnr, l, l + 1, true)[1]
+      local bufline = vim.api.nvim_buf_get_lines(bufnr, l, l + 1, true)[1]
       local utflen = vim.str_utfindex(bufline, #bufline)
       if c1 <= utflen then
-        c1 = vim.str_byteindex(bufline, c1)
+        c1 = assert(tonumber(vim.str_byteindex(bufline, c1)))
       else
         c1 = #bufline + 1
       end
       if c2 <= utflen then
-        c2 = vim.str_byteindex(bufline, c2)
+        c2 = assert(tonumber(vim.str_byteindex(bufline, c2)))
       else
         c2 = #bufline + 1
       end
+    elseif regtype == 'V' then -- linewise selection, always return whole line
+      c1 = 0
+      c2 = -1
     else
       c1 = (l == pos1[1]) and pos1[2] or 0
-      c2 = (l == pos2[1]) and (pos2[2] + (inclusive and 1 or 0)) or -1
+      if inclusive and l == pos2[1] then
+        local bufline = vim.api.nvim_buf_get_lines(bufnr, pos2[1], pos2[1] + 1, true)[1]
+        pos2[2] = vim.fn.byteidx(bufline, vim.fn.charidx(bufline, pos2[2]) + 1)
+      end
+      c2 = (l == pos2[1]) and pos2[2] or -1
     end
     table.insert(region, l, { c1, c2 })
   end
@@ -542,7 +582,7 @@ end
 ---@return table timer luv timer object
 function vim.defer_fn(fn, timeout)
   vim.validate({ fn = { fn, 'c', true } })
-  local timer = vim.uv.new_timer()
+  local timer = assert(vim.uv.new_timer())
   timer:start(
     timeout,
     0,
@@ -558,7 +598,7 @@ function vim.defer_fn(fn, timeout)
   return timer
 end
 
---- Display a notification to the user.
+--- Displays a notification to the user.
 ---
 --- This function can be overridden by plugins to display notifications using a
 --- custom provider (such as the system notification provider). By default,
@@ -567,6 +607,7 @@ end
 ---@param msg string Content of the notification to show to the user.
 ---@param level integer|nil One of the values from |vim.log.levels|.
 ---@param opts table|nil Optional parameters. Unused by default.
+---@diagnostic disable-next-line: unused-local
 function vim.notify(msg, level, opts) -- luacheck: no unused args
   if level == vim.log.levels.ERROR then
     vim.api.nvim_err_writeln(msg)
@@ -580,7 +621,7 @@ end
 do
   local notified = {}
 
-  --- Display a notification only one time.
+  --- Displays a notification only one time.
   ---
   --- Like |vim.notify()|, but subsequent calls with the same message will not
   --- display a notification.
@@ -613,14 +654,14 @@ local on_key_cbs = {}
 ---
 ---@param fn fun(key: string) Function invoked on every key press. |i_CTRL-V|
 ---                   Returning nil removes the callback associated with namespace {ns_id}.
----@param ns_id integer? Namespace ID. If nil or 0, generates and returns a new
----                    |nvim_create_namespace()| id.
+---@param ns_id integer? Namespace ID. If nil or 0, generates and returns a
+---                     new |nvim_create_namespace()| id.
 ---
 ---@return integer Namespace id associated with {fn}. Or count of all callbacks
 ---if on_key() is called without arguments.
 function vim.on_key(fn, ns_id)
   if fn == nil and ns_id == nil then
-    return #on_key_cbs
+    return vim.tbl_count(on_key_cbs)
   end
 
   vim.validate({
@@ -661,11 +702,13 @@ function vim._on_key(char)
   end
 end
 
---- Generate a list of possible completions for the string.
+--- Generates a list of possible completions for the string.
 --- String has the pattern.
 ---
 ---     1. Can we get it to just return things in the global namespace with that name prefix
 ---     2. Can we get it to return things from global namespace even with `print(` in front.
+---
+--- @param pat string
 function vim._expand_pat(pat, env)
   env = env or _G
 
@@ -767,11 +810,13 @@ function vim._expand_pat(pat, env)
   return keys, #prefix_match_pat
 end
 
+--- @param lua_string string
 vim._expand_pat_get_parts = function(lua_string)
   local parts = {}
 
   local accumulator, search_index = '', 1
-  local in_brackets, bracket_end = false, -1
+  local in_brackets = false
+  local bracket_end = -1 --- @type integer?
   local string_char = nil
   for idx = 1, #lua_string do
     local s = lua_string:sub(idx, idx)
@@ -854,16 +899,17 @@ end
 
 ---@private
 function vim.pretty_print(...)
-  vim.deprecate('vim.pretty_print', 'vim.print', '0.10')
+  vim.deprecate('vim.pretty_print()', 'vim.print()', '0.10')
   return vim.print(...)
 end
 
 --- "Pretty prints" the given arguments and returns them unmodified.
 ---
 --- Example:
---- <pre>lua
----   local hl_normal = vim.print(vim.api.nvim_get_hl_by_name('Normal', true))
---- </pre>
+---
+--- ```lua
+--- local hl_normal = vim.print(vim.api.nvim_get_hl(0, { name = 'Normal' }))
+--- ```
 ---
 --- @see |vim.inspect()|
 --- @see |:=|
@@ -887,13 +933,15 @@ function vim.print(...)
   return ...
 end
 
---- Translate keycodes.
+--- Translates keycodes.
 ---
 --- Example:
---- <pre>lua
----   local k = vim.keycode
----   vim.g.mapleader = k'<bs>'
---- </pre>
+---
+--- ```lua
+--- local k = vim.keycode
+--- vim.g.mapleader = k'<bs>'
+--- ```
+---
 --- @param str string String to be converted.
 --- @return string
 --- @see |nvim_replace_termcodes()|
@@ -901,9 +949,12 @@ function vim.keycode(str)
   return vim.api.nvim_replace_termcodes(str, true, true, true)
 end
 
+--- @param server_addr string
+--- @param connect_error string
 function vim._cs_remote(rcid, server_addr, connect_error, args)
+  --- @return string
   local function connection_failure_errmsg(consequence)
-    local explanation
+    local explanation --- @type string
     if server_addr == '' then
       explanation = 'No server specified with --server'
     else
@@ -946,7 +997,7 @@ function vim._cs_remote(rcid, server_addr, connect_error, args)
     local res = tostring(vim.rpcrequest(rcid, 'nvim_eval', args[2]))
     return { result = res, should_exit = true, tabbed = false }
   elseif subcmd ~= '' then
-    return { errmsg = 'Unknown option argument: ' .. args[1] }
+    return { errmsg = 'Unknown option argument: ' .. tostring(args[1]) }
   end
 
   if rcid == 0 then
@@ -982,9 +1033,44 @@ end
 ---
 ---@return string|nil # Deprecated message, or nil if no message was shown.
 function vim.deprecate(name, alternative, version, plugin, backtrace)
-  local msg = ('%s is deprecated'):format(name)
+  vim.validate {
+    name = { name, 'string' },
+    alternative = { alternative, 'string', true },
+    version = { version, 'string', true },
+    plugin = { plugin, 'string', true },
+  }
   plugin = plugin or 'Nvim'
-  msg = alternative and ('%s, use %s instead.'):format(msg, alternative) or msg
+
+  -- Only issue warning if feature is hard-deprecated as specified by MAINTAIN.md.
+  -- e.g., when planned to be removed in version = '0.12' (soft-deprecated since 0.10-dev),
+  -- show warnings since 0.11, including 0.11-dev (hard_deprecated_since = 0.11-dev).
+  if plugin == 'Nvim' then
+    local current_version = vim.version() ---@type Version
+    local removal_version = assert(vim.version.parse(version))
+    local is_hard_deprecated ---@type boolean
+
+    if removal_version.minor > 0 then
+      local hard_deprecated_since = assert(vim.version._version({
+        major = removal_version.major,
+        minor = removal_version.minor - 1,
+        patch = 0,
+        prerelease = 'dev', -- Show deprecation warnings in devel (nightly) version as well
+      }))
+      is_hard_deprecated = (current_version >= hard_deprecated_since)
+    else
+      -- Assume there will be no next minor version before bumping up the major version;
+      -- therefore we can always show a warning.
+      assert(removal_version.minor == 0, vim.inspect(removal_version))
+      is_hard_deprecated = true
+    end
+
+    if not is_hard_deprecated then
+      return
+    end
+  end
+
+  local msg = ('%s is deprecated'):format(name)
+  msg = alternative and ('%s, use %s instead.'):format(msg, alternative) or (msg .. '.')
   msg = ('%s%s\nThis feature will be removed in %s version %s'):format(
     msg,
     (plugin == 'Nvim' and ' :help deprecated' or ''),
@@ -996,94 +1082,6 @@ function vim.deprecate(name, alternative, version, plugin, backtrace)
     vim.notify(debug.traceback('', 2):sub(2), vim.log.levels.WARN)
   end
   return displayed and msg or nil
-end
-
---- Create builtin mappings (incl. menus).
---- Called once on startup.
-function vim._init_default_mappings()
-  -- mappings
-
-  local function region_chunks(region)
-    local chunks = {}
-    local maxcol = vim.v.maxcol
-    for line, cols in vim.spairs(region) do
-      local endcol = cols[2] == maxcol and -1 or cols[2]
-      local chunk = vim.api.nvim_buf_get_text(0, line, cols[1], line, endcol, {})[1]
-      table.insert(chunks, chunk)
-    end
-    return chunks
-  end
-
-  local function _visual_search(cmd)
-    assert(cmd == '/' or cmd == '?')
-    vim.api.nvim_feedkeys('\27', 'nx', true) -- Escape visual mode.
-    local region = vim.region(0, "'<", "'>", vim.fn.visualmode(), vim.o.selection == 'inclusive')
-    local chunks = region_chunks(region)
-    local esc_chunks = vim
-      .iter(chunks)
-      :map(function(v)
-        return vim.fn.escape(v, cmd == '/' and [[/\]] or [[?\]])
-      end)
-      :totable()
-    local esc_pat = table.concat(esc_chunks, [[\n]])
-    local search_cmd = ([[%s\V%s%s]]):format(cmd, esc_pat, '\n')
-    vim.api.nvim_feedkeys(search_cmd, 'nx', true)
-  end
-
-  local function map(mode, lhs, rhs)
-    vim.keymap.set(mode, lhs, rhs, { desc = 'Nvim builtin' })
-  end
-
-  map('n', 'Y', 'y$')
-  -- Use normal! <C-L> to prevent inserting raw <C-L> when using i_<C-O>. #17473
-  map('n', '<C-L>', '<Cmd>nohlsearch<Bar>diffupdate<Bar>normal! <C-L><CR>')
-  map('i', '<C-U>', '<C-G>u<C-U>')
-  map('i', '<C-W>', '<C-G>u<C-W>')
-  vim.keymap.set('x', '*', function()
-    _visual_search('/')
-  end, { desc = ':help v_star-default', silent = true })
-  vim.keymap.set('x', '#', function()
-    _visual_search('?')
-  end, { desc = ':help v_#-default', silent = true })
-  -- Use : instead of <Cmd> so that ranges are supported. #19365
-  map('n', '&', ':&&<CR>')
-
-  -- menus
-
-  -- TODO VimScript, no l10n
-  vim.cmd([[
-    aunmenu *
-    vnoremenu PopUp.Cut                     "+x
-    vnoremenu PopUp.Copy                    "+y
-    anoremenu PopUp.Paste                   "+gP
-    vnoremenu PopUp.Paste                   "+P
-    vnoremenu PopUp.Delete                  "_x
-    nnoremenu PopUp.Select\ All             ggVG
-    vnoremenu PopUp.Select\ All             gg0oG$
-    inoremenu PopUp.Select\ All             <C-Home><C-O>VG
-    anoremenu PopUp.-1-                     <Nop>
-    anoremenu PopUp.How-to\ disable\ mouse  <Cmd>help disable-mouse<CR>
-  ]])
-end
-
-function vim._init_default_autocmds()
-  local nvim_terminal_augroup = vim.api.nvim_create_augroup('nvim_terminal', {})
-  vim.api.nvim_create_autocmd({ 'bufreadcmd' }, {
-    pattern = 'term://*',
-    group = nvim_terminal_augroup,
-    nested = true,
-    command = "if !exists('b:term_title')|call termopen(matchstr(expand(\"<amatch>\"), '\\c\\mterm://\\%(.\\{-}//\\%(\\d\\+:\\)\\?\\)\\?\\zs.*'), {'cwd': expand(get(matchlist(expand(\"<amatch>\"), '\\c\\mterm://\\(.\\{-}\\)//'), 1, ''))})",
-  })
-  vim.api.nvim_create_autocmd({ 'cmdwinenter' }, {
-    pattern = '[:>]',
-    group = vim.api.nvim_create_augroup('nvim_cmdwin', {}),
-    command = 'syntax sync minlines=1 maxlines=1',
-  })
-end
-
-function vim._init_defaults()
-  vim._init_default_mappings()
-  vim._init_default_autocmds()
 end
 
 require('vim._options')

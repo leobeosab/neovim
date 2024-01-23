@@ -955,7 +955,7 @@ operator to add quotes around text in the current line: >
 				\ ->setline(".")}'<CR>g@
 
 ==============================================================================
-2. Abbreviations			*abbreviations* *Abbreviations*
+2. Abbreviations		*abbreviation* *abbreviations* *Abbreviations*
 
 Abbreviations are used in Insert mode, Replace mode and Command-line mode.
 If you enter a word that is an abbreviation, it is replaced with the word it
@@ -1389,6 +1389,7 @@ completion can be enabled:
 	-complete=help		help subjects
 	-complete=highlight	highlight groups
 	-complete=history	:history suboptions
+	-complete=keymap	keyboard mappings
 	-complete=locale	locale names (as output of locale -a)
 	-complete=lua		Lua expression |:lua|
 	-complete=mapclear	buffer argument

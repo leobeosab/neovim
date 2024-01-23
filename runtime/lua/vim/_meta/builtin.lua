@@ -1,6 +1,7 @@
 ---@meta
-
 -- luacheck: no unused args
+
+error('Cannot require a meta file')
 
 ---@defgroup vim.builtin
 ---
@@ -62,6 +63,12 @@
 ---
 ---</pre>
 
+---@class vim.NIL
+
+---@type vim.NIL
+---@nodoc
+vim.NIL = ...
+
 --- Returns true if the code is executing as part of a "fast" event handler,
 --- where most of the API is disabled. These are low-level events (e.g.
 --- |lua-loop-callbacks|) which can be invoked whenever Nvim polls for input.
@@ -69,10 +76,10 @@
 --- to other restrictions such as |textlock|).
 function vim.in_fast_event() end
 
---- Creates a special empty table (marked with a metatable), which Nvim to an
---- empty dictionary when translating Lua values to Vimscript or API types.
---- Nvim by default converts an empty table `{}` without this metatable to an
---- list/array.
+--- Creates a special empty table (marked with a metatable), which Nvim
+--- converts to an empty dictionary when translating Lua values to Vimscript
+--- or API types. Nvim by default converts an empty table `{}` without this
+--- metatable to an list/array.
 ---
 --- Note: If numeric keys are present in the table, Nvim ignores the metatable
 --- marker and converts the dict to a list/array anyway.
@@ -118,6 +125,55 @@ function vim.stricmp(a, b) end
 --- @param use_utf16? any
 function vim.str_byteindex(str, index, use_utf16) end
 
+--- Gets a list of the starting byte positions of each UTF-8 codepoint in the given string.
+---
+--- Embedded NUL bytes are treated as terminating the string.
+--- @param str string
+--- @return table
+function vim.str_utf_pos(str) end
+
+--- Gets the distance (in bytes) from the starting byte of the codepoint (character) that {index}
+--- points to.
+---
+--- The result can be added to {index} to get the starting byte of a character.
+---
+--- Examples:
+---
+--- ```lua
+--- -- The character 'æ' is stored as the bytes '\xc3\xa6' (using UTF-8)
+---
+--- -- Returns 0 because the index is pointing at the first byte of a character
+--- vim.str_utf_start('æ', 1)
+---
+--- -- Returns -1 because the index is pointing at the second byte of a character
+--- vim.str_utf_start('æ', 2)
+--- ```
+---
+--- @param str string
+--- @param index number
+--- @return number
+function vim.str_utf_start(str, index) end
+
+--- Gets the distance (in bytes) from the last byte of the codepoint (character) that {index} points
+--- to.
+---
+--- Examples:
+---
+--- ```lua
+--- -- The character 'æ' is stored as the bytes '\xc3\xa6' (using UTF-8)
+---
+--- -- Returns 0 because the index is pointing at the last byte of a character
+--- vim.str_utf_end('æ', 2)
+---
+--- -- Returns 1 because the index is pointing at the penultimate byte of a character
+--- vim.str_utf_end('æ', 1)
+--- ```
+---
+--- @param str string
+--- @param index number
+--- @return number
+function vim.str_utf_end(str, index) end
+
 --- Convert byte index to UTF-32 and UTF-16 indices. If {index} is not
 --- supplied, the length of the string is used. All indices are zero-based.
 ---
@@ -145,10 +201,10 @@ function vim.str_utfindex(str, index) end
 --- @return string|nil Converted string if conversion succeeds, `nil` otherwise.
 function vim.iconv(str, from, to, opts) end
 
---- Schedules {callback} to be invoked soon by the main event-loop. Useful
+--- Schedules {fn} to be invoked soon by the main event-loop. Useful
 --- to avoid |textlock| or other temporary restrictions.
---- @param callback fun()
-function vim.schedule(callback) end
+--- @param fn function
+function vim.schedule(fn) end
 
 --- Wait for {time} in milliseconds until {callback} returns `true`.
 ---
@@ -156,8 +212,11 @@ function vim.schedule(callback) end
 --- milliseconds (default 200). Nvim still processes other events during
 --- this time.
 ---
+--- Cannot be called while in an |api-fast| event.
+---
 --- Examples:
---- <pre>lua
+---
+--- ```lua
 ---
 --- ---
 --- -- Wait for 100 ms, allowing other events to process
@@ -179,14 +238,12 @@ function vim.schedule(callback) end
 --- if vim.wait(10000, function() return vim.g.timer_result end) then
 ---   print('Only waiting a little bit of time!')
 --- end
---- </pre>
+--- ```
 ---
 --- @param time integer Number of milliseconds to wait
 --- @param callback? fun(): boolean Optional callback. Waits until {callback} returns true
 --- @param interval? integer (Approximate) number of milliseconds to wait between polls
 --- @param fast_only? boolean If true, only |api-fast| events will be processed.
----                           If called from while in an |api-fast| event, will
----                           automatically be set to `true`.
 --- @return boolean, nil|-1|-2
 ---     - If {callback} returns `true` during the {time}: `true, nil`
 ---     - If {callback} never returns `true` during the {time}: `false, -1`
@@ -211,22 +268,23 @@ function vim.wait(time, callback, interval, fast_only) end
 --- likewise experimental).
 ---
 --- Example (stub for a |ui-popupmenu| implementation):
---- <pre>lua
 ---
----   ns = vim.api.nvim_create_namespace('my_fancy_pum')
+--- ```lua
+--- ns = vim.api.nvim_create_namespace('my_fancy_pum')
 ---
----   vim.ui_attach(ns, {ext_popupmenu=true}, function(event, ...)
----     if event == "popupmenu_show" then
----       local items, selected, row, col, grid = ...
----       print("display pum ", #items)
----     elseif event == "popupmenu_select" then
----       local selected = ...
----       print("selected", selected)
----     elseif event == "popupmenu_hide" then
----       print("FIN")
----     end
----   end)
---- </pre>
+--- vim.ui_attach(ns, {ext_popupmenu=true}, function(event, ...)
+---   if event == "popupmenu_show" then
+---     local items, selected, row, col, grid = ...
+---     print("display pum ", #items)
+---   elseif event == "popupmenu_select" then
+---     local selected = ...
+---     print("selected", selected)
+---   elseif event == "popupmenu_hide" then
+---     print("FIN")
+---   end
+--- end)
+--- ```
+---
 --- @param ns integer
 --- @param options table<string, any>
 --- @param callback fun()

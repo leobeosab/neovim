@@ -1,32 +1,29 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
 
-#include "nvim/ascii.h"
-#include "nvim/assert.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/assert_defs.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/change.h"
-#include "nvim/charset.h"
 #include "nvim/cursor.h"
 #include "nvim/drawscreen.h"
 #include "nvim/fold.h"
 #include "nvim/globals.h"
-#include "nvim/macros.h"
 #include "nvim/mark.h"
 #include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
 #include "nvim/move.h"
 #include "nvim/option.h"
+#include "nvim/option_vars.h"
 #include "nvim/plines.h"
-#include "nvim/pos.h"
+#include "nvim/pos_defs.h"
 #include "nvim/state.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
+#include "nvim/state_defs.h"
+#include "nvim/types_defs.h"
+#include "nvim/vim_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "cursor.c.generated.h"
@@ -108,14 +105,14 @@ static int coladvance2(pos_T *pos, bool addspaces, bool finetune, colnr_T wcol_a
                  || (VIsual_active && *p_sel != 'o')
                  || ((get_ve_flags() & VE_ONEMORE) && wcol < MAXCOL);
 
-  char *line = ml_get_buf(curbuf, pos->lnum, false);
+  char *line = ml_get_buf(curbuf, pos->lnum);
 
   if (wcol >= MAXCOL) {
     idx = (int)strlen(line) - 1 + one_more;
     col = wcol;
 
     if ((addspaces || finetune) && !VIsual_active) {
-      curwin->w_curswant = linetabsize_str(line) + one_more;
+      curwin->w_curswant = linetabsize(curwin, pos->lnum) + one_more;
       if (curwin->w_curswant > 0) {
         curwin->w_curswant--;
       }
@@ -129,7 +126,7 @@ static int coladvance2(pos_T *pos, bool addspaces, bool finetune, colnr_T wcol_a
         && curwin->w_width_inner != 0
         && wcol >= (colnr_T)width
         && width > 0) {
-      csize = linetabsize_str(line);
+      csize = linetabsize(curwin, pos->lnum);
       if (csize > 0) {
         csize--;
       }
@@ -144,17 +141,18 @@ static int coladvance2(pos_T *pos, bool addspaces, bool finetune, colnr_T wcol_a
       }
     }
 
-    chartabsize_T cts;
-    init_chartabsize_arg(&cts, curwin, pos->lnum, 0, line, line);
-    while (cts.cts_vcol <= wcol && *cts.cts_ptr != NUL) {
-      // Count a tab for what it's worth (if list mode not on)
-      csize = win_lbr_chartabsize(&cts, &head);
-      MB_PTR_ADV(cts.cts_ptr);
-      cts.cts_vcol += csize;
+    CharsizeArg csarg;
+    CSType cstype = init_charsize_arg(&csarg, curwin, pos->lnum, line);
+    StrCharInfo ci = utf_ptr2StrCharInfo(line);
+    col = 0;
+    while (col <= wcol && *ci.ptr != NUL) {
+      CharSize cs = win_charsize(cstype, col, ci.ptr, ci.chr.value, &csarg);
+      csize = cs.width;
+      head = cs.head;
+      col += cs.width;
+      ci = utfc_next(ci);
     }
-    col = cts.cts_vcol;
-    idx = (int)(cts.cts_ptr - line);
-    clear_chartabsize_arg(&cts);
+    idx = (int)(ci.ptr - line);
 
     // Handle all the special cases.  The virtual_active() check
     // is needed to ensure that a virtual position off the end of
@@ -295,7 +293,7 @@ linenr_T get_cursor_rel_lnum(win_T *wp, linenr_T lnum)
   // Loop until we reach to_line, skipping folds.
   for (; from_line < to_line; from_line++, retval++) {
     // If from_line is in a fold, set it to the last line of that fold.
-    (void)hasFoldingWin(wp, from_line, NULL, &from_line, true, NULL);
+    hasFoldingWin(wp, from_line, NULL, &from_line, true, NULL);
   }
 
   // If to_line is in a closed fold, the line count is off by +1. Correct it.
@@ -315,7 +313,7 @@ void check_pos(buf_T *buf, pos_T *pos)
   }
 
   if (pos->col > 0) {
-    char *line = ml_get_buf(buf, pos->lnum, false);
+    char *line = ml_get_buf(buf, pos->lnum);
     colnr_T len = (colnr_T)strlen(line);
     if (pos->col > len) {
       pos->col = len;
@@ -324,18 +322,18 @@ void check_pos(buf_T *buf, pos_T *pos)
 }
 
 /// Make sure curwin->w_cursor.lnum is valid.
-void check_cursor_lnum(void)
+void check_cursor_lnum(win_T *win)
 {
-  if (curwin->w_cursor.lnum > curbuf->b_ml.ml_line_count) {
+  buf_T *buf = win->w_buffer;
+  if (win->w_cursor.lnum > buf->b_ml.ml_line_count) {
     // If there is a closed fold at the end of the file, put the cursor in
     // its first line.  Otherwise in the last line.
-    if (!hasFolding(curbuf->b_ml.ml_line_count,
-                    &curwin->w_cursor.lnum, NULL)) {
-      curwin->w_cursor.lnum = curbuf->b_ml.ml_line_count;
+    if (!hasFolding(buf->b_ml.ml_line_count, &win->w_cursor.lnum, NULL)) {
+      win->w_cursor.lnum = buf->b_ml.ml_line_count;
     }
   }
-  if (curwin->w_cursor.lnum <= 0) {
-    curwin->w_cursor.lnum = 1;
+  if (win->w_cursor.lnum <= 0) {
+    win->w_cursor.lnum = 1;
   }
 }
 
@@ -353,7 +351,7 @@ void check_cursor_col_win(win_T *win)
   colnr_T oldcoladd = win->w_cursor.col + win->w_cursor.coladd;
   unsigned cur_ve_flags = get_ve_flags();
 
-  colnr_T len = (colnr_T)strlen(ml_get_buf(win->w_buffer, win->w_cursor.lnum, false));
+  colnr_T len = (colnr_T)strlen(ml_get_buf(win->w_buffer, win->w_cursor.lnum));
   if (len == 0) {
     win->w_cursor.col = 0;
   } else if (win->w_cursor.col >= len) {
@@ -406,7 +404,7 @@ void check_cursor_col_win(win_T *win)
 /// Make sure curwin->w_cursor in on a valid character
 void check_cursor(void)
 {
-  check_cursor_lnum();
+  check_cursor_lnum(curwin);
   check_cursor_col();
 }
 
@@ -451,7 +449,7 @@ bool set_leftcol(colnr_T leftcol)
   }
   curwin->w_leftcol = leftcol;
 
-  changed_cline_bef_curs();
+  changed_cline_bef_curs(curwin);
   // TODO(hinidu): I think it should be colnr_T or int, but p_siso is long.
   // Perhaps we can change p_siso to int.
   int64_t lastcol = curwin->w_leftcol + curwin->w_width_inner - curwin_col_off() - 1;
@@ -460,7 +458,7 @@ bool set_leftcol(colnr_T leftcol)
   bool retval = false;
   // If the cursor is right or left of the screen, move it to last or first
   // visible character.
-  long siso = get_sidescrolloff_value(curwin);
+  int siso = get_sidescrolloff_value(curwin);
   if (curwin->w_virtcol > (colnr_T)(lastcol - siso)) {
     retval = true;
     coladvance((colnr_T)(lastcol - siso));
@@ -481,7 +479,7 @@ bool set_leftcol(colnr_T leftcol)
     retval = true;
     if (coladvance(e + 1) == FAIL) {    // there isn't another character
       curwin->w_leftcol = s;            // adjust w_leftcol instead
-      changed_cline_bef_curs();
+      changed_cline_bef_curs(curwin);
     }
   }
 
@@ -501,18 +499,17 @@ int gchar_cursor(void)
 /// It is directly written into the block.
 void pchar_cursor(char c)
 {
-  *(ml_get_buf(curbuf, curwin->w_cursor.lnum, true)
-    + curwin->w_cursor.col) = c;
+  *(ml_get_buf_mut(curbuf, curwin->w_cursor.lnum) + curwin->w_cursor.col) = c;
 }
 
 /// @return  pointer to cursor line.
 char *get_cursor_line_ptr(void)
 {
-  return ml_get_buf(curbuf, curwin->w_cursor.lnum, false);
+  return ml_get_buf(curbuf, curwin->w_cursor.lnum);
 }
 
 /// @return  pointer to cursor position.
 char *get_cursor_pos_ptr(void)
 {
-  return ml_get_buf(curbuf, curwin->w_cursor.lnum, false) + curwin->w_cursor.col;
+  return ml_get_buf(curbuf, curwin->w_cursor.lnum) + curwin->w_cursor.col;
 }

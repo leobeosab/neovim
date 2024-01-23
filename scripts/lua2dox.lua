@@ -55,10 +55,7 @@ The effect is that you will get the function documented, but not with the parame
 
 local TYPES = { 'integer', 'number', 'string', 'table', 'list', 'boolean', 'function' }
 
-local TAGGED_TYPES = { 'TSNode', 'LanguageTree' }
-
--- Document these as 'table'
-local ALIAS_TYPES = { 'Range', 'Range4', 'Range6', 'TSMetadata' }
+local luacats_parser = require('src/nvim/generators/luacats_grammar')
 
 local debug_outfile = nil --- @type string?
 local debug_output = {}
@@ -99,7 +96,7 @@ function StreamRead.new(filename)
   -- syphon lines to our table
   local filecontents = {} --- @type string[]
   for line in io.lines(filename) do
-    filecontents[#filecontents+1] = line
+    filecontents[#filecontents + 1] = line
   end
 
   return setmetatable({
@@ -139,8 +136,16 @@ end
 
 -- input filter
 --- @class Lua2DoxFilter
-local Lua2DoxFilter = {}
+local Lua2DoxFilter = {
+  generics = {}, --- @type table<string,string>
+  block_ignore = false, --- @type boolean
+}
 setmetatable(Lua2DoxFilter, { __index = Lua2DoxFilter })
+
+function Lua2DoxFilter:reset()
+  self.generics = {}
+  self.block_ignore = false
+end
 
 --- trim comment off end of string
 ---
@@ -154,107 +159,170 @@ local function removeCommentFromLine(line)
   return line:sub(1, pos_comment - 1), line:sub(pos_comment)
 end
 
---- @param line string
+--- @param parsed luacats.Return
+--- @return string
+local function get_return_type(parsed)
+  local elems = {} --- @type string[]
+  for _, v in ipairs(parsed) do
+    local e = v.type --- @type string
+    if v.name then
+      e = e .. ' ' .. v.name --- @type string
+    end
+    elems[#elems + 1] = e
+  end
+  return '(' .. table.concat(elems, ', ') .. ')'
+end
+
+--- @param name string
+--- @return string
+local function process_name(name, optional)
+  if optional then
+    name = name:sub(1, -2) --- @type string
+  end
+  return name
+end
+
+--- @param ty string
 --- @param generics table<string,string>
+--- @return string
+local function process_type(ty, generics, optional)
+  -- replace generic types
+  for k, v in pairs(generics) do
+    ty = ty:gsub(k, v) --- @type string
+  end
+
+  -- strip parens
+  ty = ty:gsub('^%((.*)%)$', '%1')
+
+  if optional and not ty:find('nil') then
+    ty = ty .. '?'
+  end
+
+  -- remove whitespace in unions
+  ty = ty:gsub('%s*|%s*', '|')
+
+  -- replace '|nil' with '?'
+  ty = ty:gsub('|nil', '?')
+  ty = ty:gsub('nil|(.*)', '%1?')
+
+  return '(`' .. ty .. '`)'
+end
+
+--- @param parsed luacats.Param
+--- @param generics table<string,string>
+--- @return string
+local function process_param(parsed, generics)
+  local name, ty = parsed.name, parsed.type
+  local optional = vim.endswith(name, '?')
+
+  return table.concat({
+    '/// @param',
+    process_name(name, optional),
+    process_type(ty, generics, optional),
+    parsed.desc,
+  }, ' ')
+end
+
+--- @param parsed luacats.Return
+--- @param generics table<string,string>
+--- @return string
+local function process_return(parsed, generics)
+  local ty, name --- @type string, string
+  if #parsed == 1 then
+    ty, name = parsed[1].type, parsed[1].name or ''
+  else
+    ty, name = get_return_type(parsed), ''
+  end
+
+  local optional = vim.endswith(name, '?')
+
+  return table.concat({
+    '/// @return',
+    process_type(ty, generics, optional),
+    process_name(name, optional),
+    parsed.desc,
+  }, ' ')
+end
+
+--- Processes "@…" directives in a docstring line.
+---
+--- @param line string
 --- @return string?
-local function process_magic(line, generics)
+function Lua2DoxFilter:process_magic(line)
   line = line:gsub('^%s+@', '@')
   line = line:gsub('@package', '@private')
   line = line:gsub('@nodoc', '@private')
+
+  if self.block_ignore then
+    return '// gg:" ' .. line .. '"'
+  end
 
   if not vim.startswith(line, '@') then -- it's a magic comment
     return '/// ' .. line
   end
 
-  local magic = line:sub(2)
-  local magic_split = vim.split(magic, ' ', { plain = true })
+  local magic_split = vim.split(line, ' ', { plain = true })
   local directive = magic_split[1]
 
-  if vim.list_contains({
-    'cast', 'diagnostic', 'overload', 'meta', 'type'
-  }, directive) then
+  if
+    vim.list_contains({
+      '@cast',
+      '@diagnostic',
+      '@overload',
+      '@meta',
+      '@type',
+    }, directive)
+  then
     -- Ignore LSP directives
+    return '// gg:"' .. line .. '"'
+  elseif directive == '@defgroup' or directive == '@addtogroup' then
+    -- Can't use '.' in defgroup, so convert to '--'
+    return '/// ' .. line:gsub('%.', '-dot-')
+  end
+
+  if directive == '@alias' then
+    -- this contiguous block should be all ignored.
+    self.block_ignore = true
     return '// gg:"' .. line .. '"'
   end
 
-  if directive == 'defgroup' or directive == 'addtogroup' then
-    -- Can't use '.' in defgroup, so convert to '--'
-    return '/// @' .. magic:gsub('%.', '-dot-')
+  -- preprocess line before parsing
+  if directive == '@param' or directive == '@return' then
+    for _, type in ipairs(TYPES) do
+      line = line:gsub('^@param%s+([a-zA-Z_?]+)%s+.*%((' .. type .. ')%)', '@param %1 %2')
+      line = line:gsub('^@param%s+([a-zA-Z_?]+)%s+.*%((' .. type .. '|nil)%)', '@param %1 %2')
+      line = line:gsub('^@param%s+([a-zA-Z_?]+)%s+.*%((' .. type .. '%?)%)', '@param %1 %2')
+
+      line = line:gsub('^@return%s+.*%((' .. type .. ')%)', '@return %1')
+      line = line:gsub('^@return%s+.*%((' .. type .. '|nil)%)', '@return %1')
+      line = line:gsub('^@return%s+.*%((' .. type .. '%?)%)', '@return %1')
+    end
   end
 
-  if directive == 'generic' then
-    local generic_name, generic_type = line:match('@generic%s*(%w+)%s*:?%s*(.*)')
-    if generic_type == '' then
-      generic_type = 'any'
-    end
-    generics[generic_name] = generic_type
+  local parsed = luacats_parser:match(line)
+
+  if not parsed then
+    return '/// ' .. line
+  end
+
+  local kind = parsed.kind
+
+  if kind == 'generic' then
+    self.generics[parsed.name] = parsed.type or 'any'
     return
+  elseif kind == 'param' then
+    return process_param(parsed --[[@as luacats.Param]], self.generics)
+  elseif kind == 'return' then
+    return process_return(parsed --[[@as luacats.Return]], self.generics)
   end
 
-  local type_index = 2
-
-  if directive == 'param' then
-    for _, type in ipairs(TYPES) do
-      magic = magic:gsub('^param%s+([a-zA-Z_?]+)%s+.*%((' .. type .. ')%)', 'param %1 %2')
-      magic =
-        magic:gsub('^param%s+([a-zA-Z_?]+)%s+.*%((' .. type .. '|nil)%)', 'param %1 %2')
-    end
-    magic_split = vim.split(magic, ' ', { plain = true })
-    type_index = 3
-  elseif directive == 'return' then
-    for _, type in ipairs(TYPES) do
-      magic = magic:gsub('^return%s+.*%((' .. type .. ')%)', 'return %1')
-      magic = magic:gsub('^return%s+.*%((' .. type .. '|nil)%)', 'return %1')
-    end
-    -- handle the return of vim.spell.check
-    magic = magic:gsub('({.*}%[%])', '`%1`')
-    magic_split = vim.split(magic, ' ', { plain = true })
-  end
-
-  local ty = magic_split[type_index]
-
-  if ty then
-    -- fix optional parameters
-    if magic_split[2]:find('%?$') then
-      if not ty:find('nil') then
-        ty = ty  .. '|nil'
-      end
-      magic_split[2] = magic_split[2]:sub(1, -2)
-    end
-
-    -- replace generic types
-    for k, v in pairs(generics) do
-      ty = ty:gsub(k, v) --- @type string
-    end
-
-    for _, type in ipairs(TAGGED_TYPES) do
-      ty = ty:gsub(type, '|%1|')
-    end
-
-    for _, type in ipairs(ALIAS_TYPES) do
-      ty = ty:gsub('^'..type..'$', 'table') --- @type string
-    end
-
-    -- surround some types by ()
-    for _, type in ipairs(TYPES) do
-      ty = ty
-        :gsub('^(' .. type .. '|nil):?$', '(%1)')
-        :gsub('^(' .. type .. '):?$', '(%1)')
-    end
-
-    magic_split[type_index] = ty
-
-  end
-
-  magic = table.concat(magic_split, ' ')
-
-  return '/// @' .. magic
+  error(string.format('unhandled parsed line %q: %s', line, parsed))
 end
 
 --- @param line string
 --- @param in_stream StreamRead
 --- @return string
-local function process_block_comment(line, in_stream)
+function Lua2DoxFilter:process_block_comment(line, in_stream)
   local comment_parts = {} --- @type string[]
   local done --- @type boolean?
 
@@ -273,7 +341,7 @@ local function process_block_comment(line, in_stream)
       -- easier to program
       in_stream:ungetLine(vim.trim(line:sub(closeSquare + 2)))
     end
-    comment_parts[#comment_parts+1] = thisComment
+    comment_parts[#comment_parts + 1] = thisComment
   end
 
   local comment = table.concat(comment_parts)
@@ -288,14 +356,14 @@ end
 
 --- @param line string
 --- @return string
-local function process_function_header(line)
+function Lua2DoxFilter:process_function_header(line)
   local pos_fn = assert(line:find('function'))
   -- we've got a function
   local fn = removeCommentFromLine(vim.trim(line:sub(pos_fn + 8)))
 
   if fn:sub(1, 1) == '(' then
     -- it's an anonymous function
-    return '// ZZ: '..line
+    return '// ZZ: ' .. line
   end
   -- fn has a name, so is interesting
 
@@ -322,10 +390,7 @@ local function process_function_header(line)
       comma = ', '
     end
 
-    fn = fn:sub(1, paren_start)
-      .. 'self'
-      .. comma
-      .. fn:sub(paren_start + 1)
+    fn = fn:sub(1, paren_start) .. 'self' .. comma .. fn:sub(paren_start + 1)
   end
 
   if line:match('local') then
@@ -339,29 +404,34 @@ end
 
 --- @param line string
 --- @param in_stream StreamRead
---- @param generics table<string,string>>
 --- @return string?
-local function process_line(line, in_stream, generics)
+function Lua2DoxFilter:process_line(line, in_stream)
   local line_raw = line
   line = vim.trim(line)
 
   if vim.startswith(line, '---') then
-    return process_magic(line:sub(4), generics)
+    return Lua2DoxFilter:process_magic(line:sub(4))
   end
 
-  if vim.startswith(line, '--'..'[[') then -- it's a long comment
-    return process_block_comment(line:sub(5), in_stream)
+  if vim.startswith(line, '--' .. '[[') then -- it's a long comment
+    return Lua2DoxFilter:process_block_comment(line:sub(5), in_stream)
   end
+
+  -- Hax... I'm sorry
+  -- M.fun = vim.memoize(function(...)
+  --   ->
+  -- function M.fun(...)
+  line = line:gsub('^(.+) = .*_memoize%([^,]+, function%((.*)%)$', 'function %1(%2)')
 
   if line:find('^function') or line:find('^local%s+function') then
-    return process_function_header(line)
+    return Lua2DoxFilter:process_function_header(line)
   end
 
   if not line:match('^local') then
     local v = line_raw:match('^([A-Za-z][.a-zA-Z_]*)%s+%=')
     if v and v:match('%.') then
       -- Special: this lets gen_vimdoc.py handle tables.
-      return 'table '..v..'() {}'
+      return 'table ' .. v .. '() {}'
     end
   end
 
@@ -377,15 +447,13 @@ end
 function Lua2DoxFilter:filter(filename)
   local in_stream = StreamRead.new(filename)
 
-  local generics = {} --- @type table<string,string>
-
   while not in_stream:eof() do
     local line = in_stream:getLine()
 
-    local out_line = process_line(line, in_stream, generics)
+    local out_line = self:process_line(line, in_stream)
 
     if not vim.startswith(vim.trim(line), '---') then
-      generics = {}
+      self:reset()
     end
 
     if out_line then
@@ -404,7 +472,7 @@ local TApp = {
   timestamp = os.date('%c %Z', os.time()),
   name = 'Lua2DoX',
   version = '0.2 20130128',
-  copyright = 'Copyright (c) Simon Dales 2012-13'
+  copyright = 'Copyright (c) Simon Dales 2012-13',
 }
 
 setmetatable(TApp, { __index = TApp })
@@ -433,12 +501,15 @@ if arg[1] == '--help' then
 elseif arg[1] == '--version' then
   writeln(TApp:getVersion())
   writeln(TApp.copyright)
-else  -- It's a filter.
+else -- It's a filter.
   local filename = arg[1]
 
   if arg[2] == '--outdir' then
     local outdir = arg[3]
-    if type(outdir) ~= 'string' or (0 ~= vim.fn.filereadable(outdir) and 0 == vim.fn.isdirectory(outdir)) then
+    if
+      type(outdir) ~= 'string'
+      or (0 ~= vim.fn.filereadable(outdir) and 0 == vim.fn.isdirectory(outdir))
+    then
       error(('invalid --outdir: "%s"'):format(tostring(outdir)))
     end
     vim.fn.mkdir(outdir, 'p')

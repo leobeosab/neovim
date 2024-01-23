@@ -4,7 +4,7 @@ local clear = helpers.clear
 local command = helpers.command
 local expect = helpers.expect
 local feed = helpers.feed
-local sleep = helpers.sleep
+local sleep = vim.uv.sleep
 
 before_each(clear)
 
@@ -31,27 +31,21 @@ describe('edit', function()
   it('inserting a register using CTRL-R', function()
     local screen = Screen.new(10, 6)
     screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-      [1] = {foreground = Screen.colors.Blue},  -- SpecialKey
-      [2] = {bold = true},  -- ModeMsg
+      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+      [1] = { foreground = Screen.colors.Blue }, -- SpecialKey
+      [2] = { bold = true }, -- ModeMsg
     })
     screen:attach()
     feed('a<C-R>')
     screen:expect([[
       {1:^"}           |
-      {0:~           }|
-      {0:~           }|
-      {0:~           }|
-      {0:~           }|
-      {2:-- INSERT -} |
+      {0:~           }|*4
+      {2:-- INSERT --}|
     ]])
     feed('=')
     screen:expect([[
       {1:"}           |
-      {0:~           }|
-      {0:~           }|
-      {0:~           }|
-      {0:~           }|
+      {0:~           }|*4
       =^           |
     ]])
   end)
@@ -60,32 +54,26 @@ describe('edit', function()
   it('positioning cursor after CTRL-R expression failed', function()
     local screen = Screen.new(60, 6)
     screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-      [1] = {foreground = Screen.colors.Blue},  -- SpecialKey
-      [2] = {foreground = Screen.colors.SlateBlue},
-      [3] = {bold = true},  -- ModeMsg
-      [4] = {reverse = true, bold = true},  -- MsgSeparator
-      [5] = {background = Screen.colors.Red, foreground = Screen.colors.White},  -- ErrorMsg
-      [6] = {foreground = Screen.colors.SeaGreen, bold = true},  -- MoreMsg
+      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
+      [1] = { foreground = Screen.colors.Blue }, -- SpecialKey
+      [2] = { foreground = Screen.colors.SlateBlue },
+      [3] = { bold = true }, -- ModeMsg
+      [4] = { reverse = true, bold = true }, -- MsgSeparator
+      [5] = { background = Screen.colors.Red, foreground = Screen.colors.White }, -- ErrorMsg
+      [6] = { foreground = Screen.colors.SeaGreen, bold = true }, -- MoreMsg
     })
     screen:attach()
 
     feed('i<C-R>')
     screen:expect([[
       {1:^"}                                                           |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*4
       {3:-- INSERT --}                                                |
     ]])
     feed('={}')
     screen:expect([[
       {1:"}                                                           |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*4
       ={2:{}}^                                                         |
     ]])
     -- trying to insert a dictionary produces an error
@@ -102,20 +90,14 @@ describe('edit', function()
     feed(':')
     screen:expect([[
       :^                                                           |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*4
       {3:-- INSERT --}                                                |
     ]])
     -- ending Insert mode should put the cursor back on the ':'
     feed('<Esc>')
     screen:expect([[
       ^:                                                           |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*4
                                                                   |
     ]])
   end)

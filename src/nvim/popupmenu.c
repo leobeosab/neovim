@@ -1,44 +1,54 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file popupmenu.c
 ///
 /// Popup menu (PUM)
 
 #include <assert.h>
-#include <limits.h>
 #include <stdbool.h>
 #include <string.h>
 
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
-#include "nvim/ascii.h"
+#include "nvim/api/vim.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/drawscreen.h"
 #include "nvim/eval/typval.h"
-#include "nvim/eval/typval_defs.h"
 #include "nvim/ex_cmds.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/getchar.h"
+#include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
 #include "nvim/grid.h"
 #include "nvim/highlight.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/insexpand.h"
 #include "nvim/keycodes.h"
 #include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/menu.h"
 #include "nvim/message.h"
 #include "nvim/move.h"
 #include "nvim/option.h"
+#include "nvim/option_defs.h"
+#include "nvim/option_vars.h"
+#include "nvim/optionstr.h"
+#include "nvim/plines.h"
 #include "nvim/popupmenu.h"
-#include "nvim/pos.h"
+#include "nvim/pos_defs.h"
+#include "nvim/state_defs.h"
 #include "nvim/strings.h"
+#include "nvim/types_defs.h"
 #include "nvim/ui.h"
 #include "nvim/ui_compositor.h"
-#include "nvim/vim.h"
+#include "nvim/ui_defs.h"
+#include "nvim/vim_defs.h"
 #include "nvim/window.h"
+#include "nvim/winfloat.h"
 
 static pumitem_T *pum_array = NULL;  // items of displayed pum
 static int pum_size;                // nr of items in "pum_array"
@@ -55,7 +65,8 @@ static bool pum_rl;                 // true when popupmenu is drawn 'rightleft'
 
 static int pum_anchor_grid;         // grid where position is defined
 static int pum_row;                 // top row of pum
-static int pum_col;                 // left column of pum
+static int pum_col;                 // left column of pum, right column if 'rightleft'
+static int pum_left_col;            // left column of pum, before padding or scrollbar
 static bool pum_above;              // pum is drawn above cursor line
 
 static bool pum_is_visible = false;
@@ -75,21 +86,20 @@ static void pum_compute_size(void)
   pum_kind_width = 0;
   pum_extra_width = 0;
   for (int i = 0; i < pum_size; i++) {
-    int w;
     if (pum_array[i].pum_text != NULL) {
-      w = vim_strsize(pum_array[i].pum_text);
+      int w = vim_strsize(pum_array[i].pum_text);
       if (pum_base_width < w) {
         pum_base_width = w;
       }
     }
     if (pum_array[i].pum_kind != NULL) {
-      w = vim_strsize(pum_array[i].pum_kind) + 1;
+      int w = vim_strsize(pum_array[i].pum_kind) + 1;
       if (pum_kind_width < w) {
         pum_kind_width = w;
       }
     }
     if (pum_array[i].pum_extra != NULL) {
-      w = vim_strsize(pum_array[i].pum_extra) + 1;
+      int w = vim_strsize(pum_array[i].pum_extra) + 1;
       if (pum_extra_width < w) {
         pum_extra_width = w;
       }
@@ -423,11 +433,7 @@ void pum_redraw(void)
   int row = 0;
   int attr_scroll = win_hl_attr(curwin, HLF_PSB);
   int attr_thumb = win_hl_attr(curwin, HLF_PST);
-  int i;
-  char *s;
   char *p = NULL;
-  int width;
-  int w;
   int thumb_pos = 0;
   int thumb_height = 1;
   int n;
@@ -466,14 +472,14 @@ void pum_redraw(void)
 
   grid_assign_handle(&pum_grid);
 
-  bool moved = ui_comp_put_grid(&pum_grid, pum_row, pum_col - col_off,
+  pum_left_col = pum_col - col_off;
+  bool moved = ui_comp_put_grid(&pum_grid, pum_row, pum_left_col,
                                 pum_height, grid_width, false, true);
   bool invalid_grid = moved || pum_invalid;
   pum_invalid = false;
   must_redraw_pum = false;
 
-  if (!pum_grid.chars
-      || pum_grid.rows != pum_height || pum_grid.cols != grid_width) {
+  if (!pum_grid.chars || pum_grid.rows != pum_height || pum_grid.cols != grid_width) {
     grid_alloc(&pum_grid, pum_height, grid_width, !invalid_grid, false);
     ui_call_grid_resize(pum_grid.handle, pum_grid.cols, pum_grid.rows);
   } else if (invalid_grid) {
@@ -482,9 +488,8 @@ void pum_redraw(void)
   if (ui_has(kUIMultigrid)) {
     const char *anchor = pum_above ? "SW" : "NW";
     int row_off = pum_above ? -pum_height : 0;
-    ui_call_win_float_pos(pum_grid.handle, -1, cstr_as_string((char *)anchor),
-                          pum_anchor_grid, pum_row - row_off, pum_col - col_off,
-                          false, pum_grid.zindex);
+    ui_call_win_float_pos(pum_grid.handle, -1, cstr_as_string((char *)anchor), pum_anchor_grid,
+                          pum_row - row_off, pum_left_col, false, pum_grid.zindex);
   }
 
   // Never display more than we have
@@ -502,19 +507,19 @@ void pum_redraw(void)
                 / (pum_size - pum_height);
   }
 
-  for (i = 0; i < pum_height; i++) {
+  for (int i = 0; i < pum_height; i++) {
     int idx = i + pum_first;
     const int *const attrs = (idx == pum_selected) ? attrsSel : attrsNorm;
     int attr = attrs[0];  // start with "word" highlight
 
-    grid_puts_line_start(&pum_grid, row);
+    grid_line_start(&pum_grid, row);
 
     // prepend a space if there is room
     if (extra_space) {
       if (pum_rl) {
-        grid_putchar(&pum_grid, ' ', row, col_off + 1, attr);
+        grid_line_puts(col_off + 1, " ", 1, attr);
       } else {
-        grid_putchar(&pum_grid, ' ', row, col_off - 1, attr);
+        grid_line_puts(col_off - 1, " ", 1, attr);
       }
     }
 
@@ -528,8 +533,8 @@ void pum_redraw(void)
 
     for (int round = 0; round < 3; round++) {
       attr = attrs[round];
-      width = 0;
-      s = NULL;
+      int width = 0;
+      char *s = NULL;
 
       switch (round) {
       case 0:
@@ -545,7 +550,7 @@ void pum_redraw(void)
           if (s == NULL) {
             s = p;
           }
-          w = ptr2cells(p);
+          int w = ptr2cells(p);
 
           if ((*p == NUL) || (*p == TAB) || (totwidth + w > pum_width)) {
             // Display the text that fits or comes before a Tab.
@@ -580,13 +585,13 @@ void pum_redraw(void)
                   size++;
                 }
               }
-              grid_puts_len(&pum_grid, rt, (int)strlen(rt), row, grid_col - size + 1, attr);
+              grid_line_puts(grid_col - size + 1, rt, -1, attr);
               xfree(rt_start);
               xfree(st);
               grid_col -= width;
             } else {
-              // use grid_puts_len() to truncate the text
-              grid_puts(&pum_grid, st, row, grid_col, attr);
+              // use grid_line_puts() to truncate the text
+              grid_line_puts(grid_col, st, -1, attr);
               xfree(st);
               grid_col += width;
             }
@@ -597,11 +602,10 @@ void pum_redraw(void)
 
             // Display two spaces for a Tab.
             if (pum_rl) {
-              grid_puts_len(&pum_grid, "  ", 2, row, grid_col - 1,
-                            attr);
+              grid_line_puts(grid_col - 1, "  ", 2, attr);
               grid_col -= 2;
             } else {
-              grid_puts_len(&pum_grid, "  ", 2, row, grid_col, attr);
+              grid_line_puts(grid_col, "  ", 2, attr);
               grid_col += 2;
             }
             totwidth += 2;
@@ -632,39 +636,169 @@ void pum_redraw(void)
       }
 
       if (pum_rl) {
-        grid_fill(&pum_grid, row, row + 1, col_off - pum_base_width - n + 1,
-                  grid_col + 1, ' ', ' ', attr);
+        grid_line_fill(col_off - pum_base_width - n + 1, grid_col + 1, schar_from_ascii(' '), attr);
         grid_col = col_off - pum_base_width - n + 1;
       } else {
-        grid_fill(&pum_grid, row, row + 1, grid_col,
-                  col_off + pum_base_width + n, ' ', ' ', attr);
+        grid_line_fill(grid_col, col_off + pum_base_width + n, schar_from_ascii(' '), attr);
         grid_col = col_off + pum_base_width + n;
       }
       totwidth = pum_base_width + n;
     }
 
     if (pum_rl) {
-      grid_fill(&pum_grid, row, row + 1, col_off - pum_width + 1, grid_col + 1,
-                ' ', ' ', attr);
+      grid_line_fill(col_off - pum_width + 1, grid_col + 1, schar_from_ascii(' '), attr);
     } else {
-      grid_fill(&pum_grid, row, row + 1, grid_col, col_off + pum_width, ' ', ' ',
-                attr);
+      grid_line_fill(grid_col, col_off + pum_width, schar_from_ascii(' '), attr);
     }
 
     if (pum_scrollbar > 0) {
       if (pum_rl) {
-        grid_putchar(&pum_grid, ' ', row, col_off - pum_width,
-                     i >= thumb_pos && i < thumb_pos + thumb_height
-                     ? attr_thumb : attr_scroll);
+        grid_line_puts(col_off - pum_width, " ", 1,
+                       i >= thumb_pos && i < thumb_pos + thumb_height ? attr_thumb : attr_scroll);
       } else {
-        grid_putchar(&pum_grid, ' ', row, col_off + pum_width,
-                     i >= thumb_pos && i < thumb_pos + thumb_height
-                     ? attr_thumb : attr_scroll);
+        grid_line_puts(col_off + pum_width, " ", 1,
+                       i >= thumb_pos && i < thumb_pos + thumb_height ? attr_thumb : attr_scroll);
       }
     }
-    grid_puts_line_flush(false);
+    grid_line_flush();
     row++;
   }
+}
+
+/// create a floating preview window for info
+/// @return  NULL when no enough room to show
+static win_T *pum_create_float_preview(bool enter)
+{
+  FloatConfig config = FLOAT_CONFIG_INIT;
+  config.relative = kFloatRelativeEditor;
+  // when pum_above is SW otherwise is NW
+  config.anchor = pum_above ? kFloatAnchorSouth : 0;
+  int col = pum_col + pum_width + pum_scrollbar + 1;
+  // TODO(glepnir): support config align border by using completepopup
+  // align menu
+  config.row = pum_row;
+  int right_extra = Columns - col;
+  if (right_extra > 0) {
+    config.width = right_extra;
+    config.col = col - 1;
+  } else if (pum_col - 2 > 0) {
+    config.width = pum_col - 2;
+    config.col = pum_col - config.width - 1;
+  } else {
+    return NULL;
+  }
+  config.height = pum_height;
+  config.style = kWinStyleMinimal;
+  config.hide = true;
+  Error err = ERROR_INIT;
+  win_T *wp = win_new_float(NULL, true, config, &err);
+  // TODO(glepnir): remove win_enter usage
+  if (enter) {
+    win_enter(wp, false);
+  }
+
+  // create a new buffer
+  Buffer b = nvim_create_buf(false, true, &err);
+  if (!b) {
+    win_free(wp, NULL);
+    return NULL;
+  }
+  buf_T *buf = find_buffer_by_handle(b, &err);
+  set_string_option_direct_in_buf(buf, kOptBufhidden, "wipe", OPT_LOCAL, 0);
+  wp->w_float_is_info = true;
+  wp->w_p_diff = false;
+  buf->b_p_bl = false;
+  win_set_buf(wp, buf, true, &err);
+  return wp;
+}
+
+/// set info text to preview buffer.
+static void pum_preview_set_text(buf_T *buf, char *info, linenr_T *lnum, int *max_width)
+{
+  for (char *p = info; *p != NUL;) {
+    int text_width = 0;
+    char *e = vim_strchr(p, '\n');
+    if (e == NULL) {
+      ml_append_buf(buf, (*lnum)++, p, 0, false);
+      text_width = (int)mb_string2cells(p);
+      if (text_width > *max_width) {
+        *max_width = text_width;
+      }
+      break;
+    }
+    *e = NUL;
+    ml_append_buf(buf, (*lnum)++, p, (int)(e - p + 1), false);
+    text_width = (int)mb_string2cells(p);
+    if (text_width > *max_width) {
+      *max_width = text_width;
+    }
+    *e = '\n';
+    p = e + 1;
+  }
+  // delete the empty last line
+  ml_delete_buf(buf, buf->b_ml.ml_line_count, false);
+}
+
+/// adjust floating preview window width and height
+static void pum_adjust_float_position(win_T *wp, int height, int width)
+{
+  // when floating window in right and right no enough room to show
+  // but left has enough room, adjust floating window to left.
+  if (wp->w_float_config.width < width && wp->w_float_config.col > pum_col) {
+    if ((pum_col - 2) > width) {
+      wp->w_float_config.width = width;
+      wp->w_float_config.col = pum_col - width - 1;
+    }
+  }
+  wp->w_float_config.width = MIN(wp->w_float_config.width, width);
+  wp->w_float_config.height = MIN(Rows, height);
+  wp->w_float_config.hide = false;
+  win_config_float(wp, wp->w_float_config);
+}
+
+/// used in nvim_complete_set
+win_T *pum_set_info(int pum_idx, char *info)
+{
+  if (!pum_is_visible || pum_idx < 0 || pum_idx > pum_size) {
+    return NULL;
+  }
+  pum_array[pum_idx].pum_info = xstrdup(info);
+  compl_set_info(pum_idx);
+  bool use_float = strstr(p_cot, "popup") != NULL ? true : false;
+  if (pum_idx != pum_selected || !use_float) {
+    return NULL;
+  }
+
+  block_autocmds();
+  RedrawingDisabled++;
+  no_u_sync++;
+  win_T *wp = win_float_find_preview();
+  if (wp == NULL) {
+    wp = pum_create_float_preview(false);
+    // no enough room to show
+    if (!wp) {
+      return NULL;
+    }
+  } else {
+    // clean exist buffer
+    while (!buf_is_empty(wp->w_buffer)) {
+      ml_delete_buf(wp->w_buffer, 1, false);
+    }
+  }
+  no_u_sync--;
+  RedrawingDisabled--;
+
+  linenr_T lnum = 0;
+  int max_info_width = 0;
+  pum_preview_set_text(wp->w_buffer, info, &lnum, &max_info_width);
+  redraw_later(wp, UPD_SOME_VALID);
+
+  if (wp->w_p_wrap) {
+    lnum += plines_win(wp, lnum, true);
+  }
+  pum_adjust_float_position(wp, lnum, max_info_width);
+  unblock_autocmds();
+  return wp;
 }
 
 /// Set the index of the currently selected item.  The menu will scroll when
@@ -681,8 +815,9 @@ void pum_redraw(void)
 /// menu must be recomputed.
 static bool pum_set_selected(int n, int repeat)
 {
-  int resized = false;
+  bool resized = false;
   int context = pum_height / 2;
+  int prev_selected = pum_selected;
 
   pum_selected = n;
 
@@ -731,6 +866,10 @@ static bool pum_set_selected(int n, int repeat)
         pum_first = pum_selected + context - pum_height + 1;
       }
     }
+    // adjust for the number of lines displayed
+    if (pum_first > pum_size - pum_height) {
+      pum_first = pum_size - pum_height;
+    }
 
     // Show extra info in the preview window if there is something and
     // 'completeopt' contains "preview".
@@ -743,6 +882,11 @@ static bool pum_set_selected(int n, int repeat)
         && (vim_strchr(p_cot, 'p') != NULL)) {
       win_T *curwin_save = curwin;
       tabpage_T *curtab_save = curtab;
+      bool use_float = strstr(p_cot, "popup") != NULL ? true : false;
+
+      if (use_float) {
+        block_autocmds();
+      }
 
       // Open a preview window.  3 lines by default.  Prefer
       // 'previewheight' if set and smaller.
@@ -755,12 +899,26 @@ static bool pum_set_selected(int n, int repeat)
       // Prevent undo sync here, if an autocommand syncs undo weird
       // things can happen to the undo tree.
       no_u_sync++;
-      resized = prepare_tagpreview(false);
+
+      if (!use_float) {
+        resized = prepare_tagpreview(false);
+      } else {
+        win_T *wp = win_float_find_preview();
+        if (wp) {
+          win_enter(wp, false);
+        } else {
+          wp = pum_create_float_preview(true);
+          if (wp) {
+            resized = true;
+          }
+        }
+      }
+
       no_u_sync--;
       RedrawingDisabled--;
       g_do_tagpreview = 0;
 
-      if (curwin->w_p_pvw) {
+      if (curwin->w_p_pvw || curwin->w_float_is_info) {
         int res = OK;
         if (!resized
             && (curbuf->b_nwindows == 1)
@@ -769,7 +927,7 @@ static bool pum_set_selected(int n, int repeat)
             && (curbuf->b_p_bh[0] == 'w')) {
           // Already a "wipeout" buffer, make it empty.
           while (!buf_is_empty(curbuf)) {
-            ml_delete((linenr_T)1, false);
+            ml_delete(1, false);
           }
         } else {
           // Don't want to sync undo in the current buffer.
@@ -780,33 +938,21 @@ static bool pum_set_selected(int n, int repeat)
           if (res == OK) {
             // Edit a new, empty buffer. Set options for a "wipeout"
             // buffer.
-            set_option_value_give_err("swf", BOOLEAN_OPTVAL(false), OPT_LOCAL);
-            set_option_value_give_err("bl", BOOLEAN_OPTVAL(false), OPT_LOCAL);
-            set_option_value_give_err("bt", STATIC_CSTR_AS_OPTVAL("nofile"), OPT_LOCAL);
-            set_option_value_give_err("bh", STATIC_CSTR_AS_OPTVAL("wipe"), OPT_LOCAL);
-            set_option_value_give_err("diff", BOOLEAN_OPTVAL(false), OPT_LOCAL);
+            set_option_value_give_err(kOptSwapfile, BOOLEAN_OPTVAL(false), OPT_LOCAL);
+            set_option_value_give_err(kOptBuflisted, BOOLEAN_OPTVAL(false), OPT_LOCAL);
+            set_option_value_give_err(kOptBuftype, STATIC_CSTR_AS_OPTVAL("nofile"), OPT_LOCAL);
+            set_option_value_give_err(kOptBufhidden, STATIC_CSTR_AS_OPTVAL("wipe"), OPT_LOCAL);
+            set_option_value_give_err(kOptDiff, BOOLEAN_OPTVAL(false), OPT_LOCAL);
           }
         }
 
         if (res == OK) {
-          char *p, *e;
           linenr_T lnum = 0;
-
-          for (p = pum_array[pum_selected].pum_info; *p != NUL;) {
-            e = vim_strchr(p, '\n');
-            if (e == NULL) {
-              ml_append(lnum++, p, 0, false);
-              break;
-            }
-            *e = NUL;
-            ml_append(lnum++, p, (int)(e - p + 1), false);
-            *e = '\n';
-            p = e + 1;
-          }
-
+          int max_info_width = 0;
+          pum_preview_set_text(curbuf, pum_array[pum_selected].pum_info, &lnum, &max_info_width);
           // Increase the height of the preview window to show the
           // text, but no more than 'previewheight' lines.
-          if (repeat == 0) {
+          if (repeat == 0 && !use_float) {
             if (lnum > p_pvh) {
               lnum = (linenr_T)p_pvh;
             }
@@ -819,8 +965,21 @@ static bool pum_set_selected(int n, int repeat)
 
           curbuf->b_changed = false;
           curbuf->b_p_ma = false;
+          if (pum_selected != prev_selected) {
+            curwin->w_topline = 1;
+          } else if (curwin->w_topline > curbuf->b_ml.ml_line_count) {
+            curwin->w_topline = curbuf->b_ml.ml_line_count;
+          }
           curwin->w_cursor.lnum = 1;
           curwin->w_cursor.col = 0;
+
+          if (use_float) {
+            if (curwin->w_p_wrap) {
+              lnum += plines_win(curwin, lnum, true);
+            }
+            // adjust floating window by actually height and max info text width
+            pum_adjust_float_position(curwin, lnum, max_info_width);
+          }
 
           if ((curwin != curwin_save && win_valid(curwin_save))
               || (curtab != curtab_save && valid_tabpage(curtab_save))) {
@@ -843,7 +1002,7 @@ static bool pum_set_selected(int n, int repeat)
             // update the view on the buffer.  Only go back to
             // the window when needed, otherwise it will always be
             // redrawn.
-            if (resized) {
+            if (resized && win_valid(curwin_save)) {
               no_u_sync++;
               win_enter(curwin_save, true);
               no_u_sync--;
@@ -871,6 +1030,10 @@ static bool pum_set_selected(int n, int repeat)
             pum_is_visible = true;
           }
         }
+      }
+
+      if (use_float) {
+        unblock_autocmds();
       }
     }
   }
@@ -906,6 +1069,10 @@ void pum_check_clear(void)
     }
     pum_is_drawn = false;
     pum_external = false;
+    win_T *wp = win_float_find_preview();
+    if (wp != NULL) {
+      win_close(wp, false, false);
+    }
   }
 }
 
@@ -978,13 +1145,13 @@ void pum_set_event_info(dict_T *dict)
     r = (double)pum_row;
     c = (double)pum_col;
   }
-  (void)tv_dict_add_float(dict, S_LEN("height"), h);
-  (void)tv_dict_add_float(dict, S_LEN("width"), w);
-  (void)tv_dict_add_float(dict, S_LEN("row"), r);
-  (void)tv_dict_add_float(dict, S_LEN("col"), c);
-  (void)tv_dict_add_nr(dict, S_LEN("size"), pum_size);
-  (void)tv_dict_add_bool(dict, S_LEN("scrollbar"),
-                         pum_scrollbar ? kBoolVarTrue : kBoolVarFalse);
+  tv_dict_add_float(dict, S_LEN("height"), h);
+  tv_dict_add_float(dict, S_LEN("width"), w);
+  tv_dict_add_float(dict, S_LEN("row"), r);
+  tv_dict_add_float(dict, S_LEN("col"), c);
+  tv_dict_add_nr(dict, S_LEN("size"), pum_size);
+  tv_dict_add_bool(dict, S_LEN("scrollbar"),
+                   pum_scrollbar ? kBoolVarTrue : kBoolVarFalse);
 }
 
 static void pum_position_at_mouse(int min_width)
@@ -1000,7 +1167,14 @@ static void pum_position_at_mouse(int min_width)
       max_col = MAX(Columns - wp->w_wincol, wp->w_grid.cols);
     }
   }
-  pum_anchor_grid = mouse_grid;
+  if (pum_grid.handle != 0 && mouse_grid == pum_grid.handle) {
+    // Repositioning the menu by right-clicking on itself
+    mouse_grid = pum_anchor_grid;
+    mouse_row += pum_row;
+    mouse_col += pum_left_col;
+  } else {
+    pum_anchor_grid = mouse_grid;
+  }
   if (max_row - mouse_row > pum_size) {
     // Enough space below the mouse row.
     pum_above = false;
